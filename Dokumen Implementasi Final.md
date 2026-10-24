@@ -1,875 +1,1230 @@
-### Dokumen Implementasi Final
+### Spesifikasi Implementasi Lengkap
 
 ### Sistem Operasional Terintegrasi Pet Shop & Klinik Hewan
 
-SRS & Technical Implementation Specification • Versi 1.1 • 25 Oktober 2026
+Versi 2.0 · 25 Oktober 2026 · Target deployment: Vercel + Supabase
 
-Dokumen ini menjadi acuan implementasi bagi developer untuk membangun aplikasi khusus dari nol, menggunakan website responsif dan deployment cloud/VPS.
+Dokumen ini menjadi acuan implementasi bagi developer untuk membangun sistem dari awal sampai siap digunakan, dengan akun Vercel, Supabase, dan GitHub yang sudah tersedia. Targetnya bukan sekadar website katalog, melainkan sistem operasional terpadu untuk toko, klinik, rawat inap, grooming, penitipan, keuangan, dan pelanggan.
 
-Keputusan bisnis yang sudah ditetapkan menjadi aturan dasar sistem:
+Prinsip utama desainnya:
 
-* Inventori: stok bersama antara pet shop dan klinik, dengan pencatatan lokasi dan sumber pemakaian.
+* Satu website responsif untuk komputer, tablet, dan HP.
 
-* Reservasi stok online: dilakukan setelah pembayaran dikonfirmasi.
+* Satu database dengan dukungan banyak cabang.
 
-* Rekam medis: hanya dapat disahkan dokter yang menangani atau dokter lain yang berwenang.
+* Satu sistem inventori bersama untuk pet shop dan klinik.
 
-* Keuangan: kas, pengeluaran, piutang, HPP, dan laporan laba-rugi sederhana.
+* Pembayaran manual tanpa payment gateway.
 
-* Fulfillment: ambil di toko atau pengiriman yang diatur admin.
+* Hak akses berbeda untuk pemilik, dokter, admin, dan pelanggan.
 
-* Pemantauan rawat inap: customer melihat ringkasan harian dan riwayat perkembangan yang telah dibagikan.
+* Data medis, stok, pembayaran, dan transaksi keuangan harus dapat diaudit.
 
-* Deployment: cloud/VPS, dengan database terpusat dan dukungan multi-cabang di masa depan.
+* Deployment otomatis melalui GitHub → Vercel, dengan Supabase sebagai backend terkelola.
 
-Prinsip yang paling penting: seluruh transaksi, stok, dan rekam medis harus konsisten meskipun pengguna mengaksesnya secara bersamaan dari perangkat berbeda.
+Batasan dokumen: ini adalah spesifikasi implementasi lengkap, bukan klaim bahwa aplikasi sudah dibuat atau di-deploy. Developer tetap perlu membangun kode, menguji aturan bisnis, mengisi konfigurasi lingkungan, dan melakukan UAT sebelum sistem dipakai secara operasional.
 
-### 1\. Arsitektur implementasi final
+### 1\. Arsitektur teknis final
 
-Website responsif
+Frontend — Next.js + TypeScript
 
-Owner • Dokter • Admin/Kasir • Customer
+Dashboard, POS, portal pelanggan, formulir, laporan
 
-Backend API — Laravel
+Server-side application — Vercel
 
-Auth • RBAC • Business rules • Validasi • Audit log
+Server Components, Route Handlers, validasi, otorisasi, integrasi database
 
 PostgreSQL
 
-Transaksi dan data utama
+Data dan transaksi
 
-Private object storage
+Supabase Auth + RLS
 
-Foto, dokumen, bukti bayar
+Identitas dan isolasi akses
 
-POS & perangkat
+Supabase Storage
 
-Barcode, printer struk
+Berkas privat
 
-Background jobs
+Postgres RPC / Edge Functions
 
-Notifikasi, pengingat, ekspor
+Transaksi khusus dan pekerjaan backend
 
-### Stack yang ditetapkan
+GitHub
 
-| Komponen        | Pilihan                                             |
-| --------------- | --------------------------------------------------- |
-| Frontend        | Next.js + TypeScript                                |
-| UI              | Tailwind CSS + komponen UI reusable                 |
-| Backend         | Laravel REST API                                    |
-| Database        | PostgreSQL                                          |
-| Cache/queue     | Redis dan worker antrean                            |
-| File            | Object storage privat                               |
-| Web server      | Nginx + PHP-FPM untuk API                           |
-| Deployment      | VPS/cloud dengan HTTPS                              |
-| Version control | Git                                                 |
-| Pengujian       | PHPUnit/Pest, API integration tests, Playwright     |
-| Monitoring      | Application logs, error tracking, uptime monitoring |
+Source code, pull request, review, dan version control
 
-Gunakan arsitektur modular monolith: satu aplikasi backend dengan batas modul yang jelas. Pembayaran, inventori, klinik, dan pesanan tetap berada dalam satu backend agar transaksi antarmodul dapat dijaga konsistensinya.
+Vercel
 
-### Lingkup MVP
+Preview dan production deployment
 
-MVP harus mencakup:
+### 1.1 Stack yang ditetapkan
 
-* Login, role, permission, cabang, dan audit log.
+| Lapisan         | Pilihan implementasi                             |
+| --------------- | ------------------------------------------------ |
+| Framework       | Next.js App Router, TypeScript                   |
+| UI              | Tailwind CSS dan komponen aksesibel              |
+| Validasi        | Zod pada input dan server                        |
+| Form            | React Hook Form bila dibutuhkan                  |
+| Database        | Supabase PostgreSQL                              |
+| Autentikasi     | Supabase Auth                                    |
+| Otorisasi data  | RBAC + PostgreSQL Row Level Security             |
+| File            | Supabase Storage dengan bucket privat            |
+| Server API      | Next.js Route Handlers                           |
+| Operasi atomik  | PostgreSQL functions/RPC dan transaksi SQL       |
+| Tes             | Vitest, Playwright, tes database/RLS             |
+| Version control | GitHub                                           |
+| Hosting         | Vercel                                           |
+| Observabilitas  | Log aplikasi, log database, dan pemantauan error |
 
-* Pelanggan dan banyak hewan per pelanggan.
+Gunakan dokumentasi resmi sebagai rujukan saat implementasi: [Next.js](https://nextjs.org/docs?utm_source=chatgpt.com), [Supabase](https://supabase.com/docs?utm_source=chatgpt.com), dan [Vercel](https://vercel.com/docs?utm_source=chatgpt.com).
 
-* POS, produk, harga, stok bersama, supplier, dan pembelian.
+Keputusan arsitektur penting: tidak menggunakan Laravel sebagai backend terpisah pada rancangan ini. Logika sensitif diletakkan pada server Next.js dan fungsi database yang terkontrol. Operasi stok, pembayaran, dan kas tidak boleh bergantung pada serangkaian request browser yang bisa terputus di tengah proses.
 
-* Metode pembayaran manual dan verifikasi.
+### 2\. Ruang lingkup dan modul aplikasi
 
-* Klinik, rekam medis, resep, dan tagihan.
+### 2.1 Modul utama
 
-* Rawat inap, grooming, dan penitipan.
+| Kode   | Modul                | Fitur wajib                                                   |
+| ------ | -------------------- | ------------------------------------------------------------- |
+| MOD-01 | Pengguna & akses     | Login, reset password, peran, izin, sesi, audit               |
+| MOD-02 | Cabang               | Profil cabang, lokasi stok, kas, pengaturan per cabang        |
+| MOD-03 | Pelanggan & hewan    | Data pemilik, banyak hewan per pemilik, riwayat               |
+| MOD-04 | Produk               | SKU, barcode, kategori, harga, pajak bila berlaku, satuan     |
+| MOD-05 | Inventori            | Stok bersama, mutasi, stok minimum, transfer cabang           |
+| MOD-06 | Pembelian            | Supplier, pesanan pembelian, penerimaan, tagihan              |
+| MOD-07 | POS                  | Keranjang, diskon berizin, pembayaran, invoice, retur         |
+| MOD-08 | Klinik               | Jadwal, konsultasi, rekam medis, diagnosis, resep             |
+| MOD-09 | Rawat inap           | Kandang, episode rawat, observasi, tugas, ringkasan pelanggan |
+| MOD-10 | Grooming & penitipan | Jadwal, kapasitas, status pengerjaan, check-in/out            |
+| MOD-11 | Toko online          | Katalog, keranjang, pesanan, pembayaran manual                |
+| MOD-12 | Portal pelanggan     | Hewan, janji temu, pesanan, invoice, rawat inap               |
+| MOD-13 | Keuangan             | Kas, pengeluaran, piutang, HPP, laporan laba rugi sederhana   |
+| MOD-14 | Notifikasi           | Status pesanan, janji temu, pembayaran, rawat inap            |
+| MOD-15 | Pengaturan           | Metode pembayaran, harga, kategori, template, aturan bisnis   |
+| MOD-16 | Laporan              | Penjualan, stok, klinik, grooming, kas, keuangan              |
+| MOD-17 | Audit & operasional  | Riwayat perubahan, backup, monitoring, pengelolaan error      |
 
-* E-commerce, pembayaran manual, dan pemenuhan pesanan.
+### 2.2 Batasan versi pertama
 
-* Portal customer untuk hewan dan pemantauan perawatan.
+Fitur berikut tidak termasuk dalam MVP kecuali ditambahkan melalui perubahan ruang lingkup:
 
-* Kas, pengeluaran, piutang, HPP, dan laporan sederhana.
+* Payment gateway otomatis.
 
-* Backup, keamanan, dan deployment produksi.
+* Integrasi akuntansi penuh, pajak korporasi, dan general ledger kompleks.
 
-### 2\. Business rules final
+* Sinkronisasi stok dengan marketplace eksternal.
 
-Aturan berikut harus diimplementasikan pada backend, bukan hanya sebagai validasi antarmuka.
+* Aplikasi native Android/iOS.
 
-### BR-01 — Pengguna dan hak akses
+* Mode offline penuh.
 
-* Setiap pengguna memiliki akun unik.
+* Sistem payroll dan HR.
 
-* Satu pengguna dapat mempunyai beberapa role atau penugasan cabang.
+* AI untuk diagnosis hewan.
 
-* Owner memiliki hak administratif penuh lintas modul.
+* Integrasi perangkat laboratorium atau alat medis.
 
-* Dokter hanya mengakses fungsi klinis dan data pasien sesuai kewenangan.
+### 3\. Pengguna, peran, dan hak akses
 
-* Admin mengakses pet shop dan fungsi administratif klinik sesuai permission.
+Hak akses wajib diperiksa pada server dan database, bukan hanya dengan menyembunyikan tombol di UI.
 
-* Customer hanya mengakses profilnya, hewan yang berhak dikelolanya, pesanan, pembayaran, dan catatan yang dibagikan.
+### 3.1 Matriks izin awal
 
-* Setiap endpoint memeriksa autentikasi, permission, lingkup cabang, dan kepemilikan data.
+Legenda: P = penuh sesuai ruang lingkup, T = terbatas, — = tidak diizinkan.
 
-* Pengubahan role atau permission oleh owner dicatat di audit log.
-
-### BR-02 — Identitas pelanggan dan hewan
-
-* Satu customer dapat mempunyai nol atau banyak hewan.
-
-* Setiap hewan mempunyai identitas pasien yang unik dan terpisah.
-
-* Hewan dapat dikaitkan dengan beberapa pemilik/pengasuh jika hubungan tersebut disetujui.
-
-* Customer tidak otomatis berhak melihat hewan milik pengguna lain hanya karena mengetahui nomor rekam medis.
-
-* Penggabungan data pelanggan ganda harus dilakukan melalui proses khusus dengan pencatatan audit.
-
-### BR-03 — Stok bersama
-
-* Pet shop dan klinik menggunakan inventori bersama pada tingkat bisnis, tetapi stok dicatat menurut cabang, lokasi penyimpanan, dan batch bila relevan.
-
-* Stok fisik tidak boleh berkurang dua kali akibat transaksi POS dan pemakaian klinik.
-
-* Pemakaian obat oleh klinik harus menghasilkan mutasi stok dengan referensi pasien, resep, atau tindakan terkait.
-
-* Perpindahan antar-lokasi menghasilkan mutasi keluar dan masuk yang saling berpasangan.
-
-* Transfer antar-cabang tidak boleh dianggap sebagai penjualan.
-
-* Stok negatif dilarang secara default. Jika owner mengaktifkan pengecualian, tindakan harus memerlukan izin khusus dan tercatat.
-
-* Produk yang memerlukan pelacakan batch atau kedaluwarsa harus diproses dengan batch yang sesuai.
-
-### BR-04 — Reservasi pesanan online
-
-* Saat customer membuat pesanan, stok belum dialokasikan sebagai reservasi final.
-
-* Setelah pembayaran dikonfirmasi, backend mengunci stok yang relevan dan mencoba membuat reservasi.
-
-* Jika stok tidak mencukupi pada saat konfirmasi, pesanan masuk status `STOCK_REVIEW` dan tidak boleh diproses menjadi siap kirim.
-
-* Pesanan yang telah dikonfirmasi pembayarannya tetapi tidak dapat dipenuhi harus masuk alur penyelesaian, misalnya pengembalian dana atau persetujuan penggantian barang.
-
-* Setelah reservasi berhasil, stok tersedia untuk pesanan lain berkurang.
-
-* Reservasi dilepas ketika pesanan dibatalkan secara sah sebelum pemenuhan.
-
-* Penjualan POS, pemakaian klinik, dan reservasi online harus bersaing terhadap saldo stok yang sama secara transaksional.
-
-Catatan desain: kebijakan ini berarti pembayaran dapat diterima sebelum stok benar-benar dialokasikan. Karena itu, sistem harus mempunyai penanganan kegagalan alokasi dan refund yang eksplisit. Jika risiko tersebut terlalu tinggi, reservasi sementara sebelum pembayaran dapat dipertimbangkan di versi berikutnya, tetapi bukan perilaku default versi ini.
-
-### BR-05 — Pembayaran manual
-
-* Metode pembayaran diatur owner dan dapat diaktifkan per cabang.
-
-* Metode meliputi tunai, transfer bank, QRIS, dan e-wallet manual.
-
-* Bukti pembayaran bukan bukti otomatis bahwa pembayaran telah berhasil.
-
-* Konfirmasi dilakukan oleh role yang memiliki `payment.confirm`.
-
-* Owner dapat menentukan apakah konfirmasi dilakukan kasir, supervisor, atau owner sendiri.
-
-* Pembuat transaksi tidak otomatis boleh menyetujui tindakan yang secara khusus memerlukan pemisahan tugas.
-
-* Pembayaran parsial diperbolehkan jika diaktifkan.
-
-* Jumlah pembayaran yang telah dikonfirmasi tidak boleh melebihi saldo tagihan tanpa aturan kelebihan bayar yang eksplisit.
-
-* Refund harus merujuk pada pembayaran asli dan memerlukan izin yang sesuai.
-
-* Semua konfirmasi, penolakan, dan refund harus dapat diaudit.
-
-### BR-06 — POS dan transaksi
-
-* Nomor invoice unik dan tidak dapat dipakai ulang.
-
-* Harga, diskon, pajak, dan biaya disimpan sebagai snapshot saat transaksi dikonfirmasi.
-
-* Transaksi selesai tidak dapat diedit bebas.
-
-* Retur, pembatalan, dan refund menggunakan dokumen pembalik yang merujuk transaksi awal.
-
-* Request transaksi harus mendukung idempotensi untuk mencegah duplikasi saat jaringan lambat atau tombol ditekan berulang.
-
-* Penutupan shift mencatat kas awal, penjualan tunai, pengeluaran, kas aktual, dan selisih.
-
-### BR-07 — Rekam medis
-
-* Rekam medis memiliki status `DRAFT`, `SIGNED`, `AMENDED`, atau `VOIDED`.
-
-* Catatan `SIGNED` tidak dapat ditimpa atau dihapus langsung.
-
-* Pengesahan hanya boleh dilakukan dokter yang menangani atau dokter lain yang secara eksplisit memiliki kewenangan klinis.
-
-* Koreksi harus menyimpan alasan, pelaku, waktu, dan referensi catatan sebelumnya.
-
-* Admin boleh mengelola pendaftaran dan jadwal, tetapi tidak boleh membuat diagnosis atau mengesahkan resep tanpa kewenangan medis yang sesuai.
-
-* Dokter dapat melihat informasi pasien yang dibutuhkan untuk perawatan sesuai penugasan dan kebijakan akses.
-
-* Semua tindakan klinis yang relevan menyimpan identitas petugas dan waktu.
-
-### BR-08 — Rawat inap dan informasi customer
-
-* Setiap episode rawat inap memiliki waktu masuk, status, penempatan, catatan observasi, dan proses pulang.
-
-* Kandang atau ruang tidak boleh ditempati dua episode yang bertabrakan, kecuali sistem secara eksplisit mendukung kapasitas bersama.
-
-* Tugas perawatan memiliki waktu yang dijadwalkan, petugas, dan status pelaksanaan.
-
-* Catatan harian atau perkembangan yang dibagikan customer harus ditandai sebagai informasi eksternal.
-
-* Customer melihat ringkasan harian dan riwayat yang telah dibagikan, bukan seluruh catatan internal.
-
-* Dokumen yang sudah dibagikan tetap memiliki riwayat publikasi dan dapat ditarik dari tampilan jika ada alasan yang sah, tanpa menghapus jejak audit internal.
-
-### BR-09 — Grooming dan penitipan
-
-* Booking memerlukan hewan, layanan, jadwal, dan status yang valid.
-
-* Kapasitas staf, kandang, dan ruang harus diperiksa saat reservasi.
-
-* Perubahan jadwal memicu validasi ulang kapasitas.
-
-* Tambahan layanan yang menambah biaya memerlukan persetujuan customer.
-
-* Penitipan mencatat waktu aktual check-in dan check-out untuk menghitung biaya berdasarkan kebijakan tarif.
-
-* Perawatan dan instruksi khusus hewan harus dapat dilihat oleh staf yang bertugas.
-
-### BR-10 — Kas dan laporan
-
-* Kas masuk dan keluar harus mempunyai sumber transaksi atau alasan yang tercatat.
-
-* Penjualan dan pembayaran adalah peristiwa berbeda: omzet tidak sama dengan penerimaan kas.
-
-* HPP dihitung berdasarkan metode penilaian persediaan yang ditetapkan, misalnya moving weighted average.
-
-* Pengeluaran operasional dicatat terpisah dari pembelian barang yang masuk ke persediaan.
-
-* Laporan laba-rugi sederhana harus menyatakan periode, cabang, basis penghitungan, serta pengecualian yang relevan.
-
-* Perubahan saldo kas tidak boleh dilakukan melalui pengubahan angka laporan secara manual; gunakan transaksi kas yang tercatat.
-
-### 3\. Perubahan dan finalisasi skema database
-
-Dibandingkan rancangan awal, keputusan terbaru membutuhkan beberapa perubahan penting agar stok bersama, pembayaran manual, multi-cabang, dan publikasi catatan rawat inap aman.
-
-### 3.1 Perubahan struktur inventori
-
-Tambahkan atau pastikan tabel berikut tersedia:
-
-| Tabel                    | Kolom utama                                                         | Aturan                       |
-| ------------------------ | ------------------------------------------------------------------- | ---------------------------- |
-| inventory_locations      | id, branch_id, name, location_type, status                          | Lokasi penyimpanan fisik     |
-| inventory_lots           | id, product_id, lot_number, expiry_date                             | Batch produk jika diperlukan |
-| stock_balances           | product_id, location_id, lot_id, on_hand, reserved                  | Saldo stok                   |
-| inventory_movements      | id, movement_type, quantity, reference_type, reference_id           | Buku mutasi stok             |
-| stock_reservations       | id, order_id, product_id, location_id, quantity, status, expires_at | Reservasi pesanan            |
-| inventory_transfers      | id, source_location_id, destination_location_id, status             | Transfer lokasi              |
-| inventory_transfer_items | transfer_id, product_id, lot_id, quantity                           | Item transfer                |
-
-`stock_balances` perlu memiliki constraint unik untuk kombinasi produk, lokasi, dan batch yang relevan.
-
-Rumus saldo:
-
-\\text{Available} = \\text{On hand} - \\text{Reserved}
-
-Contoh: stok fisik 20 unit dan reservasi aktif 4 unit berarti stok tersedia untuk transaksi baru adalah 16 unit.
-
-Gunakan `on_hand` untuk jumlah fisik yang tercatat, sedangkan `reserved` untuk kuantitas yang dialokasikan tetapi belum dikeluarkan secara fisik. Pemakaian atau penyerahan barang mengurangi `on_hand` dan melepaskan reservasi terkait dalam transaksi database yang sama.
-
-Catatan implementasi: karena stok bersama dipakai oleh POS, klinik, dan e-commerce, semua jalur pengurangan stok harus melewati satu service inventori backend. Jangan membuat logika pengurangan stok berbeda di masing-masing controller.
-
-### 3.2 Perubahan tabel pesanan dan pembayaran
-
-| Tabel                 | Kolom tambahan/final                                                                                            |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| orders                | order_number, customer_id, branch_id, fulfillment_type, payment_status, fulfillment_status, stock_review_status |
-| order_items           | product_id, quantity, unit_price, discount_amount, tax_amount, line_total                                       |
-| payments              | invoice_id, method_id, amount, status, reference_number, confirmed_by, confirmed_at                             |
-| payment_confirmations | payment_id, reviewed_by, decision, reason, created_at                                                           |
-| refunds               | payment_id, amount, status, approved_by, processed_at                                                           |
-| idempotency_keys      | key, user_id, operation, response_hash, expires_at                                                              |
-
-Pisahkan status pembayaran dari status pemenuhan pesanan. Misalnya, pesanan dapat berstatus pembayaran lunas tetapi belum dialokasikan stoknya.
-
-Gunakan constraint dan indeks untuk:
-
-* Nomor pesanan unik.
-
-* Nomor invoice unik sesuai lingkup bisnis.
-
-* Nominal pembayaran positif.
-
-* Status dan waktu konfirmasi yang konsisten.
-
-* Satu keputusan konfirmasi per proses review.
-
-* Idempotency key unik sesuai pengguna dan operasi.
-
-### 3.3 Perubahan rekam medis dan rawat inap
-
-| Tabel                       | Kolom tambahan/final                                                                   |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| medical_records             | author_id, doctor_id, signed_by, signed_at, version, status                            |
-| medical_record_amendments   | medical_record_id, previous_version, reason, amended_by, amended_at                    |
-| hospitalizations            | pet_id, branch_id, admitted_at, discharged_at, status, attending_doctor_id             |
-| care_observations           | hospitalization_id, recorded_by, observed_at, clinical_notes, customer_summary         |
-| shared_updates              | hospitalization_id, observation_id, published_by, published_at, visibility, revoked_at |
-| care_tasks                  | hospitalization_id, task_type, scheduled_at, assigned_to, status, completed_at         |
-| care_units                  | branch_id, unit_code, unit_type, capacity, status                                      |
-| hospitalization_assignments | hospitalization_id, care_unit_id, started_at, ended_at                                 |
-
-Untuk `shared_updates`, simpan hubungan dengan catatan sumber serta snapshot atau versi konten yang dibagikan. Dengan demikian, perubahan catatan internal tidak diam-diam mengubah riwayat yang pernah dilihat pelanggan.
-
-### 3.4 Keuangan sederhana
-
-Tambahkan tabel:
-
-| Tabel                                   | Kegunaan                                     |
-| --------------------------------------- | -------------------------------------------- |
-| cash_shifts                             | Shift kasir                                  |
-| cash_movements                          | Kas masuk dan keluar                         |
-| operating_expenses                      | Pengeluaran bisnis                           |
-| supplier_bills                          | Tagihan supplier                             |
-| customer_receivables                    | Jika piutang dikelola sebagai saldo khusus   |
-| cost_layers atau inventory_cost_history | Riwayat biaya untuk perhitungan HPP          |
-| refunds                                 | Pengembalian dana                            |
-| financial_periods                       | Opsional, untuk periode laporan yang ditutup |
-
-Jangan menyimpan saldo piutang atau stok sebagai angka bebas yang dapat diubah tanpa transaksi sumber. Jika saldo disimpan untuk performa, nilainya harus dapat direkonsiliasi dengan transaksi yang mendasarinya.
-
-### 3.5 Standar database
-
-* Gunakan primary key yang konsisten; UUID atau bigint dapat dipilih, tetapi jangan mencampur strategi tanpa alasan.
-
-* Tambahkan `created_at`, `updated_at`, dan kolom status yang sesuai.
-
-* Gunakan foreign key untuk relasi penting.
-
-* Gunakan unique constraints untuk kode produk, nomor dokumen, dan identitas relevan.
-
-* Gunakan transaksi database serta locking ketika mengubah saldo stok atau pembayaran.
-
-* Simpan nominal uang menggunakan `NUMERIC` dengan presisi yang ditentukan.
-
-* Simpan waktu dalam UTC dan konversikan saat ditampilkan sesuai zona waktu cabang.
-
-* Buat indeks pada `branch_id`, `customer_id`, `pet_id`, `status`, `created_at`, dan foreign key yang sering digunakan.
-
-* Gunakan migration versioning; perubahan struktur database harus dapat ditinjau dan diuji.
-
-### 4\. Kontrak API inti
-
-Gunakan REST API dengan prefix `/api/v1`. Endpoint berikut merupakan kontrak yang disarankan, bukan klaim bahwa API sudah dibangun.
-
-Semua endpoint yang memerlukan login wajib memvalidasi identitas, permission, dan lingkup data. API publik seperti katalog tetap perlu rate limiting dan validasi input.
-
-### 4.1 Autentikasi, pengguna, dan pengaturan
-
-| Method | Endpoint                              | Fungsi                       | Permission               |
-| ------ | ------------------------------------- | ---------------------------- | ------------------------ |
-| POST   | /api/v1/auth/login                    | Login                        | Publik, dibatasi rate    |
-| POST   | /api/v1/auth/logout                   | Logout                       | Authenticated            |
-| GET    | /api/v1/auth/me                       | Profil dan permission aktif  | Authenticated            |
-| GET    | /api/v1/users                         | Daftar pengguna              | users.view               |
-| POST   | /api/v1/users                         | Membuat pengguna             | users.create             |
-| PATCH  | /api/v1/users/{id}                    | Memperbarui pengguna         | users.update             |
-| GET    | /api/v1/roles                         | Daftar role                  | roles.view               |
-| PUT    | /api/v1/roles/{id}/permissions        | Mengatur permission          | users.permissions.manage |
-| GET    | /api/v1/branches                      | Daftar cabang yang diizinkan | branches.view            |
-| GET    | /api/v1/settings/payment-methods      | Metode pembayaran            | settings.payment.view    |
-| POST   | /api/v1/settings/payment-methods      | Membuat metode pembayaran    | settings.payment.manage  |
-| PATCH  | /api/v1/settings/payment-methods/{id} | Mengubah konfigurasi metode  | settings.payment.manage  |
-
-Konfigurasi rekening dan gambar QRIS tidak boleh ikut terkirim ke endpoint publik yang tidak memerlukannya. Data yang dipublikasikan harus dibatasi pada informasi pembayaran yang memang perlu diketahui customer.
-
-### 4.2 Pelanggan, hewan, dan klinik
-
-| Method | Endpoint                                     | Fungsi                                                |
-| ------ | -------------------------------------------- | ----------------------------------------------------- |
-| GET    | /api/v1/customers                            | Pencarian pelanggan                                   |
-| POST   | /api/v1/customers                            | Registrasi pelanggan                                  |
-| GET    | /api/v1/customers/{id}/pets                  | Hewan milik pelanggan                                 |
-| POST   | /api/v1/customers/{id}/pets                  | Menambahkan hewan                                     |
-| GET    | /api/v1/pets/{id}                            | Detail pasien hewan                                   |
-| POST   | /api/v1/appointments                         | Membuat appointment                                   |
-| PATCH  | /api/v1/appointments/{id}/status             | Check-in, selesai, batal, dan transisi yang diizinkan |
-| POST   | /api/v1/medical-records                      | Membuat draft rekam medis                             |
-| GET    | /api/v1/pets/{id}/medical-records            | Riwayat medis sesuai izin                             |
-| POST   | /api/v1/medical-records/{id}/sign            | Mengesahkan catatan medis                             |
-| POST   | /api/v1/medical-records/{id}/amendments      | Mengajukan/membuat amendemen                          |
-| POST   | /api/v1/prescriptions                        | Membuat resep                                         |
-| POST   | /api/v1/prescriptions/{id}/dispense          | Memproses penyerahan obat                             |
-| POST   | /api/v1/hospitalizations                     | Penerimaan rawat inap                                 |
-| POST   | /api/v1/hospitalizations/{id}/observations   | Menambahkan observasi                                 |
-| POST   | /api/v1/hospitalizations/{id}/tasks          | Menjadwalkan tugas perawatan                          |
-| POST   | /api/v1/hospitalizations/{id}/shared-updates | Menerbitkan catatan untuk customer                    |
-| POST   | /api/v1/hospitalizations/{id}/discharge      | Memproses pasien pulang                               |
-
-Endpoint `sign`, `amendments`, `dispense`, dan `discharge` harus memiliki validasi domain tersendiri. Tidak cukup sekadar memperbarui kolom status.
-
-### 4.3 POS, inventori, dan pembelian
-
-| Method | Endpoint                                 | Fungsi                                           |
-| ------ | ---------------------------------------- | ------------------------------------------------ |
-| GET    | /api/v1/products                         | Pencarian produk                                 |
-| POST   | /api/v1/products                         | Membuat produk                                   |
-| PATCH  | /api/v1/products/{id}                    | Memperbarui produk                               |
-| GET    | /api/v1/inventory/balances               | Saldo stok menurut lokasi                        |
-| GET    | /api/v1/inventory/movements              | Riwayat mutasi                                   |
-| POST   | /api/v1/inventory/adjustments            | Penyesuaian stok berizin                         |
-| POST   | /api/v1/inventory/transfers              | Membuat transfer                                 |
-| POST   | /api/v1/inventory/transfers/{id}/receive | Menerima transfer                                |
-| POST   | /api/v1/purchase-orders                  | Membuat pesanan pembelian                        |
-| POST   | /api/v1/goods-receipts                   | Mencatat penerimaan barang                       |
-| POST   | /api/v1/cash-shifts/open                 | Membuka shift                                    |
-| POST   | /api/v1/cash-shifts/{id}/close           | Menutup shift                                    |
-| POST   | /api/v1/sales                            | Membuat transaksi POS                            |
-| POST   | /api/v1/sales/{id}/complete              | Menyelesaikan transaksi sesuai status pembayaran |
-| POST   | /api/v1/sales/{id}/returns               | Mengajukan atau memproses retur                  |
-
-Semua operasi yang membuat transaksi keuangan atau mengubah stok harus menggunakan idempotency key ketika sesuai. Operasi mutasi harus menghasilkan referensi dokumen yang dapat ditelusuri.
-
-### 4.4 Pembayaran dan pesanan online
-
-| Method | Endpoint                                | Fungsi                                   |
-| ------ | --------------------------------------- | ---------------------------------------- |
-| POST   | /api/v1/orders                          | Membuat pesanan online                   |
-| GET    | /api/v1/orders/{id}                     | Detail pesanan sesuai kepemilikan        |
-| POST   | /api/v1/orders/{id}/payment-submissions | Mengirim informasi atau bukti pembayaran |
-| POST   | /api/v1/payments/{id}/confirm           | Mengonfirmasi pembayaran                 |
-| POST   | /api/v1/payments/{id}/reject            | Menolak pembayaran dengan alasan         |
-| POST   | /api/v1/payments/{id}/refunds           | Memulai refund                           |
-| POST   | /api/v1/refunds/{id}/approve            | Menyetujui refund                        |
-| POST   | /api/v1/orders/{id}/fulfill             | Memulai proses pemenuhan                 |
-| POST   | /api/v1/orders/{id}/dispatch            | Mencatat pengiriman                      |
-| POST   | /api/v1/orders/{id}/complete            | Menandai pesanan selesai                 |
-| GET    | /api/v1/invoices/{id}                   | Detail invoice yang diizinkan            |
-
-Konfirmasi pembayaran harus dilakukan dalam satu alur transaksi backend yang aman:
-
-* Kunci pembayaran dan periksa status terkini.
-
-* Pastikan pembayaran belum pernah dikonfirmasi.
-
-* Simpan keputusan verifikasi dan identitas reviewer.
-
-* Perbarui status pembayaran dan invoice.
-
-* Jika pembayaran pesanan online telah lunas, alokasikan stok secara atomik.
-
-* Jika stok tidak mencukupi, tandai `STOCK_REVIEW` dan buat tugas penyelesaian.
-
-* Commit perubahan bersama audit log dan event yang diperlukan.
-
-Jika stok gagal dialokasikan, jangan menampilkan pesanan sebagai siap dipenuhi.
-
-### 4.5 Laporan dan portal customer
-
-| Method | Endpoint                           | Fungsi                                 |
-| ------ | ---------------------------------- | -------------------------------------- |
-| GET    | /api/v1/reports/sales              | Laporan penjualan                      |
-| GET    | /api/v1/reports/inventory          | Laporan stok                           |
-| GET    | /api/v1/reports/clinic             | Laporan klinik                         |
-| GET    | /api/v1/reports/cash-flow          | Arus kas                               |
-| GET    | /api/v1/reports/profit-loss        | Laba-rugi sederhana                    |
-| GET    | /api/v1/portal/me/pets             | Hewan customer                         |
-| GET    | /api/v1/portal/me/orders           | Pesanan customer                       |
-| GET    | /api/v1/portal/me/invoices         | Tagihan customer                       |
-| GET    | /api/v1/portal/me/hospitalizations | Episode rawat inap yang boleh dilihat  |
-| GET    | /api/v1/portal/me/shared-updates   | Catatan rawat inap yang dipublikasikan |
-
-Semua endpoint daftar sebaiknya mendukung pagination, sorting terbatas, dan filter yang diizinkan. API tidak boleh menerima nama kolom bebas untuk sorting atau filter tanpa validasi.
-
-### Format respons dan error
-
-Gunakan format konsisten, misalnya:
-
-```json
-{
-  "data": {
-    "id": "order-id",
-    "status": "PENDING_PAYMENT"
-  },
-  "meta": {
-    "request_id": "request-id"
-  }
-}
+| Fitur                        | Pemilik | Dokter | Admin      | Pelanggan |
+| ---------------------------- | ------- | ------ | ---------- | --------- |
+| Dashboard operasional        | P       | T      | T          | —         |
+| Pengaturan pengguna dan izin | P       | —      | —          | —         |
+| Pengaturan cabang            | P       | —      | T          | —         |
+| POS dan penjualan toko       | P       | —      | P          | —         |
+| Produk dan harga             | P       | —      | T          | —         |
+| Mutasi dan penyesuaian stok  | P       | T*     | T*         | —         |
+| Jadwal klinik                | P       | T      | T          | T**       |
+| Rekam medis                  | P***    | P/T    | T          | T**       |
+| Resep dan tindakan klinis    | P***    | P/T    | —          | T**       |
+| Rawat inap dan observasi     | P***    | P/T    | T          | T**       |
+| Grooming dan penitipan       | P       | —      | P          | T**       |
+| Konfirmasi pembayaran        | P       | —      | T****      | —         |
+| Pengeluaran dan kas          | P       | —      | T          | —         |
+| Laporan keuangan             | P       | —      | T terbatas | —         |
+| Laporan medis                | P***    | T      | —          | T**       |
+| Audit log                    | P       | —      | T terbatas | —         |
+
+Keterangan:
+
+* `*` Hanya jika izin tambahan diberikan; misalnya dokter boleh mencatat obat yang digunakan, tetapi tidak boleh mengubah stok sembarangan.
+
+* `**` Hanya data milik pelanggan yang login.
+
+* `***` Akses pemilik terhadap rekam medis mengikuti kebijakan privasi, peraturan yang berlaku, dan kebutuhan operasional; akses baca tidak otomatis berarti kewenangan menandatangani rekam medis.
+
+* `****` Admin yang memeriksa bukti pembayaran tidak otomatis boleh menyetujui refund atau mengubah konfigurasi pembayaran.
+
+### 3.2 Model otorisasi
+
+Gunakan kombinasi:
+
+* `profiles`: identitas internal pengguna.
+
+* `roles`: peran yang dapat dikonfigurasi.
+
+* `permissions`: izin granular.
+
+* `user_roles`: penugasan peran kepada pengguna.
+
+* `role_permissions`: izin yang melekat pada peran.
+
+* `user_branch_access`: cabang yang dapat diakses pengguna.
+
+Contoh nama izin:
+
+```text
+pos.sale.create
+pos.sale.complete
+pos.sale.return
+inventory.read
+inventory.adjust
+inventory.transfer
+payment.submit
+payment.confirm
+refund.approve
+medical_record.read
+medical_record.write
+medical_record.sign
+medical_record.amend
+hospitalization.manage
+hospitalization.publish_update
+finance.cash.read
+finance.expense.create
+finance.report.read
+settings.manage
+audit.read
 ```
 
-Format error:
+Semua tindakan penting memerlukan izin spesifik. Untuk operasi lintas cabang, backend harus memverifikasi akses pengguna terhadap cabang yang menjadi konteks transaksi.
+
+### 4\. Alur kerja operasional
+
+### 4.1 Penjualan di kasir (POS)
+
+* Admin memilih cabang dan membuka shift kasir.
+
+* Admin memindai barcode atau mencari produk dan menambahkan jumlah.
+
+* Sistem memeriksa harga, izin diskon, dan stok tersedia.
+
+* Sistem membuat transaksi dengan snapshot nama produk, SKU, harga, diskon, dan biaya yang berlaku saat penjualan.
+
+* Pembayaran dicatat sebagai tunai, transfer, QRIS manual, atau metode lain yang telah diaktifkan pemilik.
+
+* Setelah pembayaran diselesaikan, sistem mengurangi stok dan mencatat pergerakan stok serta kas secara atomik.
+
+* Invoice diterbitkan dan transaksi tidak boleh diedit langsung setelah selesai. Koreksi dilakukan melalui retur atau transaksi pembalik.
+
+### 4.2 Pesanan toko online dengan pembayaran manual
+
+* Pelanggan memilih produk dan mengirim pesanan.
+
+* Sistem membuat pesanan `PENDING_PAYMENT`. Stok belum dicadangkan.
+
+* Pelanggan melihat instruksi pembayaran yang dikonfigurasi pemilik, lalu mengunggah bukti transfer jika diperlukan.
+
+* Admin memeriksa pembayaran dan mengonfirmasi secara eksplisit.
+
+* Dalam satu transaksi database, sistem mengunci saldo stok yang relevan, memeriksa ketersediaan, membuat alokasi stok, dan memperbarui status pesanan.
+
+* Jika stok tidak cukup ketika pembayaran dikonfirmasi, status menjadi `STOCK_REVIEW`. Pesanan tidak boleh diproses untuk pemenuhan sebelum ada penyelesaian.
+
+* Admin dapat mengatur pengambilan di toko atau pengiriman. Penyelesaian pengiriman dicatat dan diaudit.
+
+Risiko yang harus dipahami: karena stok tidak dicadangkan saat pelanggan memesan, pembayaran bisa diterima ketika stok telah habis. Sistem harus menyediakan proses penanganan, penggantian barang, pembatalan, atau refund manual yang dapat diaudit.
+
+### 4.3 Konsultasi dan rekam medis
+
+* Admin membuat jadwal atau dokter membuka kunjungan yang sudah terdaftar.
+
+* Dokter memeriksa identitas hewan dan riwayat yang relevan.
+
+* Dokter mengisi keluhan, anamnesis, pemeriksaan, diagnosis, tindakan, dan rencana perawatan.
+
+* Dokter mencatat resep atau penggunaan obat dengan keterkaitan ke stok inventori.
+
+* Rekam medis disimpan sebagai draft dan dapat diperiksa sebelum ditandatangani.
+
+* Setelah ditandatangani, rekam medis tidak dapat diubah secara langsung.
+
+* Koreksi dibuat sebagai amendemen dengan alasan, pelaku, dan waktu.
+
+* Admin hanya membantu pencatatan administratif; admin tidak boleh menandatangani atau mengubah diagnosis tanpa kewenangan klinis.
+
+### 4.4 Rawat inap
+
+* Pembuatan episode rawat inap mengalokasikan kandang/unit yang tersedia.
+
+* Sistem mencegah dua pasien menempati satu unit yang sama dalam rentang waktu yang bertabrakan, kecuali unit tersebut memang dikonfigurasi untuk kapasitas lebih dari satu.
+
+* Dokter atau petugas berwenang mencatat observasi, pemberian obat, makanan, kondisi, dan tindakan.
+
+* Catatan klinis internal dipisahkan dari pembaruan yang ditampilkan kepada pelanggan.
+
+* Pelanggan dapat melihat ringkasan harian dan riwayat perkembangan yang telah dipublikasikan.
+
+* Proses pulang menutup episode, menyelesaikan tagihan, serta melepaskan unit.
+
+* Semua perubahan status dan publikasi update dicatat dalam audit log.
+
+### 4.5 Pembelian dan penerimaan stok
+
+* Admin membuat pesanan pembelian kepada supplier.
+
+* Penerimaan mencatat kuantitas aktual, batch, tanggal kedaluwarsa bila relevan, dan harga perolehan.
+
+* Stok bertambah hanya melalui proses penerimaan yang sah.
+
+* Tagihan supplier dan status pembayarannya dicatat terpisah dari penerimaan barang.
+
+* Selisih penerimaan, retur supplier, dan penyesuaian stok wajib memiliki alasan serta jejak audit.
+
+### 4.6 Grooming dan penitipan
+
+* Pelanggan atau admin membuat booking untuk hewan, layanan, tanggal, durasi, dan cabang.
+
+* Sistem memeriksa kapasitas layanan atau ruang penitipan.
+
+* Status booking: `REQUESTED`, `CONFIRMED`, `CHECKED_IN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `NO_SHOW`.
+
+* Layanan tambahan memerlukan pencatatan biaya dan persetujuan pelanggan sesuai kebijakan toko.
+
+* Check-in/out mencatat kondisi awal dan akhir, catatan petugas, serta biaya final.
+
+### 5\. Standar status transaksi
+
+Gunakan status eksplisit, jangan mengandalkan teks bebas.
+
+| Entitas        | Status yang disarankan                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pesanan online | PENDING_PAYMENT, PAYMENT_REVIEW, PAID, STOCK_REVIEW, PROCESSING, READY_FOR_PICKUP, DISPATCHED, COMPLETED, CANCELLED, REFUND_PENDING, REFUNDED |
+| Pembayaran     | SUBMITTED, CONFIRMED, REJECTED, REFUND_PENDING, REFUNDED                                                                                      |
+| Penjualan POS  | DRAFT, COMPLETED, PARTIALLY_RETURNED, RETURNED, VOIDED                                                                                        |
+| Rekam medis    | DRAFT, SIGNED, AMENDED, VOIDED                                                                                                                |
+| Rawat inap     | PLANNED, ADMITTED, ACTIVE, DISCHARGE_PENDING, DISCHARGED, CANCELLED                                                                           |
+| Pembelian      | DRAFT, SUBMITTED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED                                                                                     |
+| Booking        | REQUESTED, CONFIRMED, CHECKED_IN, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW                                                                  |
+
+Setiap perubahan status harus melewati validasi transisi. Contohnya, pesanan `CANCELLED` tidak boleh langsung menjadi `COMPLETED` tanpa proses pemulihan yang terotorisasi.
+
+### 6\. Rancangan database PostgreSQL
+
+Semua tabel operasional yang terkait cabang harus mempunyai `branch_id` jika relevan. Tabel pelanggan harus mendukung banyak hewan per pemilik, sedangkan setiap hewan mempunyai riwayat medis yang terpisah.
+
+### 6.1 Standar database
+
+* Primary key menggunakan UUID secara konsisten untuk data bisnis yang terekspos melalui API.
+
+* Foreign key wajib untuk relasi penting.
+
+* Harga dan nilai uang memakai `NUMERIC`, bukan floating-point.
+
+* Waktu disimpan sebagai `TIMESTAMPTZ` dalam UTC dan ditampilkan sesuai zona waktu cabang.
+
+* Data transaksi menggunakan kolom `created_at`, `created_by`, `updated_at`, dan bila perlu `confirmed_at`, `confirmed_by`.
+
+* Data transaksi penting tidak dihapus permanen melalui UI biasa.
+
+* Perubahan skema dikelola menggunakan migration yang tersimpan di Git.
+
+* Unique constraints digunakan untuk SKU, nomor invoice, dan kunci idempotensi sesuai cakupannya.
+
+* Indeks ditambahkan berdasarkan pola pencarian dan laporan yang benar-benar dipakai.
+
+* Jangan menggunakan `ON DELETE CASCADE` pada relasi yang dapat menghapus rekam medis atau transaksi keuangan secara tidak sengaja.
+
+### 6.2 Kelompok tabel
+
+A. Identitas, peran, dan cabang
+
+`profiles`, `branches`, `roles`, `permissions`, `user_roles`, `role_permissions`, `user_branch_access`, `audit_logs`
+
+B. Pelanggan dan hewan
+
+`customers`, `customer_addresses`, `pets`, `pet_owners` (opsional bila kepemilikan bersama diperlukan), `pet_documents`
+
+C. Produk, supplier, dan stok
+
+`products`, `product_categories`, `product_units`, `product_barcodes`, `suppliers`, `purchase_orders`, `purchase_order_items`, `goods_receipts`, `goods_receipt_items`, `inventory_locations`, `inventory_lots`, `stock_balances`, `inventory_movements`, `stock_reservations`, `inventory_transfers`, `inventory_transfer_items`, `inventory_cost_layers`
+
+D. POS, pesanan, dan pembayaran
+
+`sales`, `sale_items`, `sale_payments`, `sales_returns`, `sales_return_items`, `orders`, `order_items`, `payments`, `payment_confirmations`, `refunds`, `idempotency_keys`, `payment_methods`
+
+E. Klinik dan rawat inap
+
+`appointments`, `visits`, `medical_records`, `medical_record_amendments`, `prescriptions`, `prescription_items`, `treatment_records`, `hospitalizations`, `care_units`, `hospitalization_assignments`, `care_observations`, `care_tasks`, `shared_updates`
+
+F. Grooming dan penitipan
+
+`service_catalog`, `service_bookings`, `service_booking_items`, `boarding_stays`, `service_capacity`
+
+G. Keuangan dan laporan
+
+`cash_shifts`, `cash_movements`, `operating_expenses`, `customer_receivables`, `supplier_bills`, `receivable_payments`, `financial_periods`, `inventory_cost_history`
+
+H. Toko online dan notifikasi
+
+`customer_carts`, `customer_cart_items` (opsional bila keranjang persisten diperlukan), `notifications`, `notification_preferences`, `fulfillment_records`
+
+Daftar di atas adalah model konseptual. Sebelum coding, developer harus menetapkan tipe kolom, constraint, cardinality, dan migration final untuk setiap tabel.
+
+### 6.3 Relasi inti
+
+```mermaid
+
+erDiagram
+    BRANCHES ||--o{ SALES : has
+    BRANCHES ||--o{ INVENTORY_LOCATIONS : contains
+    CUSTOMERS ||--o{ PETS : owns
+    CUSTOMERS ||--o{ ORDERS : places
+    CUSTOMERS ||--o{ APPOINTMENTS : books
+    PETS ||--o{ VISITS : receives
+    PETS ||--o{ MEDICAL_RECORDS : has
+    PETS ||--o{ HOSPITALIZATIONS : may_have
+    PRODUCTS ||--o{ STOCK_BALANCES : tracked_in
+    INVENTORY_LOCATIONS ||--o{ STOCK_BALANCES : stores
+    PRODUCTS ||--o{ INVENTORY_MOVEMENTS : changes
+    SALES ||--|{ SALE_ITEMS : contains
+    ORDERS ||--|{ ORDER_ITEMS : contains
+    ORDERS ||--o{ PAYMENTS : has
+    HOSPITALIZATIONS ||--o{ CARE_OBSERVATIONS : records
+    HOSPITALIZATIONS ||--o{ SHARED_UPDATES : publishes
+```
+
+### 6.4 Kolom minimum untuk tabel kritis
+
+| Tabel               | Kolom utama                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| branches            | id, code, name, timezone, address, is_active                                                       |
+| profiles            | id (relasi ke Auth), display_name, is_active                                                       |
+| customers           | id, auth_user_id opsional, name, phone, email                                                      |
+| pets                | id, customer_id, name, species, breed, sex, birth_date, weight                                     |
+| products            | id, sku, barcode, name, category_id, unit, selling_price, is_active                                |
+| stock_balances      | product_id, location_id, lot_id opsional, on_hand, reserved                                        |
+| inventory_movements | id, product_id, location_id, quantity_delta, movement_type, reference_type, reference_id, actor_id |
+| sales               | id, branch_id, invoice_number, status, subtotal, discount_total, grand_total, created_by           |
+| orders              | id, customer_id, branch_id, status, payment_status, fulfillment_type, grand_total                  |
+| payments            | id, order_id atau referensi transaksi yang jelas, method_id, amount, status, submitted_at          |
+| medical_records     | id, pet_id, visit_id, doctor_id, status, clinical_data, signed_at, signed_by                       |
+| hospitalizations    | id, pet_id, branch_id, admitted_at, discharged_at, status                                          |
+| cash_movements      | id, branch_id, cash_shift_id, movement_type, amount, reference_type, reference_id                  |
+| audit_logs          | id, actor_id, action, entity_type, entity_id, branch_id, metadata, created_at                      |
+
+Penting: kolom `clinical_data` dapat berupa `JSONB` untuk bagian formulir yang fleksibel, tetapi data yang sering difilter, diwajibkan, atau dipakai untuk laporan harus memiliki kolom terstruktur. Jangan menyimpan seluruh sistem dalam satu kolom JSON.
+
+### 6.5 Aturan inventori dan perhitungan stok
+
+Gunakan:
+
+\\text{Stok tersedia} = \\text{On hand} - \\text{Reserved}
+
+`stock_balances` mempunyai constraint unik yang mencakup produk, lokasi, dan batch jika sistem menggunakan batch. Nilai stok dan reservasi tidak boleh negatif kecuali ada pengecualian bisnis yang sengaja diaktifkan dan diaudit.
+
+Semua perubahan stok dicatat di `inventory_movements`, termasuk:
+
+* Penerimaan pembelian.
+
+* Penjualan POS.
+
+* Pemakaian obat untuk pasien.
+
+* Retur pelanggan.
+
+* Retur supplier.
+
+* Penyesuaian hasil stock opname.
+
+* Transfer antar-lokasi atau cabang.
+
+* Pemakaian atau kehilangan barang yang disetujui.
+
+Saldo merupakan hasil pencatatan pergerakan yang terkontrol. Developer perlu membuat mekanisme rekonsiliasi untuk membandingkan saldo dengan ledger pergerakan.
+
+### 6.6 Perhitungan harga pokok
+
+Gunakan metode moving weighted average sebagai default awal, kecuali bisnis memilih FIFO atau metode lain yang sesuai dengan praktik akuntansinya.
+
+* Pembelian memperbarui biaya rata-rata tertimbang sesuai kebijakan.
+
+* Penjualan mencatat snapshot HPP pada waktu transaksi.
+
+* Retur dan pembatalan harus membalik biaya secara konsisten.
+
+* Produk kedaluwarsa atau berbasis batch dapat memerlukan pencatatan biaya per batch.
+
+* Perubahan harga modal baru tidak boleh mengubah HPP transaksi lama secara diam-diam.
+
+Rumus dasar moving weighted average:
+
+\\text{Biaya rata-rata baru} =
+\\frac{\\text{Nilai stok lama}+\\text{Nilai penerimaan baru}}
+{\\text{Kuantitas stok lama}+\\text{Kuantitas penerimaan baru}}
+
+Rumus harus diterapkan pada transaksi yang diserialisasi untuk produk/lokasi terkait agar dua penerimaan bersamaan tidak menghasilkan biaya yang keliru.
+
+### 7\. Keamanan Supabase dan kebijakan RLS
+
+Ini bagian yang sangat kritis karena sistem menyimpan data kesehatan hewan, bukti pembayaran, dan transaksi keuangan.
+
+### 7.1 Kebijakan wajib
+
+* Aktifkan RLS untuk seluruh tabel yang dapat diakses melalui Data API.
+
+* Tabel internal hanya dapat diakses melalui server atau kebijakan yang secara eksplisit mengizinkan akses.
+
+* Pelanggan hanya dapat membaca data pelanggan, hewan, invoice, dan pesanan miliknya.
+
+* Dokter hanya dapat mengakses rekam medis sesuai penugasan, cabang, dan izin yang diberikan.
+
+* Admin tidak boleh mengakses fungsi klinis yang tidak termasuk izin administratifnya.
+
+* Semua akses lintas cabang harus lolos pemeriksaan `user_branch_access`.
+
+* Jangan mempercayai `role`, `branch_id`, `customer_id`, atau `doctor_id` yang dikirim browser tanpa verifikasi server/database.
+
+* Service-role key dan secret key hanya boleh berada di environment server yang tepercaya.
+
+* Bucket bukti pembayaran dan dokumen medis harus privat, dengan akses melalui signed URL berumur pendek atau endpoint server terotorisasi.
+
+* Data sensitif tidak boleh dimasukkan ke log umum, URL, pesan error, atau analytics tanpa kebutuhan dan kontrol yang jelas.
+
+### 7.2 Pola pemeriksaan akses
+
+Untuk setiap request yang sensitif, validasi:
+
+* Siapa pengguna yang terautentikasi?
+
+* Apakah pengguna aktif?
+
+* Apakah pengguna memiliki izin untuk tindakan ini?
+
+* Apakah pengguna berhak mengakses cabang terkait?
+
+* Apakah objek yang diminta berada dalam ruang lingkup akses pengguna?
+
+* Apakah status objek mengizinkan perubahan?
+
+* Apakah tindakan ini memerlukan persetujuan tambahan?
+
+RLS menjadi lapisan pertahanan database; pemeriksaan di server tetap diperlukan untuk validasi bisnis dan pesan error yang baik.
+
+### 7.3 Penandatanganan rekam medis
+
+* Hanya fungsi database atau endpoint yang terotorisasi dapat menandatangani rekam medis.
+
+* Identitas penandatangan harus berasal dari sesi yang tervalidasi, bukan dari field bebas yang dikirim browser.
+
+* Setelah ditandatangani, perubahan klinis dicatat melalui tabel amendemen, bukan menimpa isi asli.
+
+* Catat alasan perubahan, identitas pelaku, waktu, dan versi data.
+
+* Uji bahwa pengguna yang memiliki akses baca tidak otomatis mendapat izin menulis atau menandatangani.
+
+### 8\. Kontrak API aplikasi
+
+Gunakan pola API konsisten, misalnya prefix `/api/v1`, JSON, validasi Zod, dan format error yang seragam. Endpoint berikut adalah rancangan kontrak, bukan endpoint yang sudah tersedia.
+
+| Area             | Endpoint contoh                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| Sesi             | GET /api/v1/me, POST /api/v1/auth/logout                                                |
+| Pengguna         | GET/POST /api/v1/users, PATCH /api/v1/users/:id                                         |
+| Cabang           | GET/POST /api/v1/branches, PATCH /api/v1/branches/:id                                   |
+| Pelanggan/hewan  | GET/POST /api/v1/customers, GET/POST /api/v1/pets                                       |
+| Produk           | GET/POST /api/v1/products, PATCH /api/v1/products/:id                                   |
+| Stok             | GET /api/v1/inventory/balances, POST /api/v1/inventory/adjustments                      |
+| Transfer stok    | POST /api/v1/inventory/transfers, POST /api/v1/inventory/transfers/:id/receive          |
+| Pembelian        | POST /api/v1/purchases, POST /api/v1/purchases/:id/receive                              |
+| POS              | POST /api/v1/sales, POST /api/v1/sales/:id/complete, POST /api/v1/sales/:id/returns     |
+| Pembayaran       | POST /api/v1/payments/:id/confirm, POST /api/v1/payments/:id/reject                     |
+| Refund           | POST /api/v1/refunds, POST /api/v1/refunds/:id/approve                                  |
+| Klinik           | POST /api/v1/appointments, POST /api/v1/visits, POST /api/v1/medical-records/:id/sign   |
+| Amendemen medis  | POST /api/v1/medical-records/:id/amendments                                             |
+| Rawat inap       | POST /api/v1/hospitalizations, POST /api/v1/hospitalizations/:id/observations           |
+| Update pelanggan | POST /api/v1/hospitalizations/:id/shared-updates                                        |
+| Grooming         | POST /api/v1/service-bookings, POST /api/v1/service-bookings/:id/check-in               |
+| Pesanan online   | POST /api/v1/orders, POST /api/v1/orders/:id/payment-submissions                        |
+| Fulfillment      | POST /api/v1/orders/:id/fulfill, POST /api/v1/orders/:id/dispatch                       |
+| Keuangan         | POST /api/v1/expenses, GET /api/v1/reports/profit-loss                                  |
+| Laporan          | GET /api/v1/reports/sales, GET /api/v1/reports/inventory, GET /api/v1/reports/cash-flow |
+
+### 8.1 Aturan kontrak API
+
+* Semua endpoint mengembalikan status HTTP yang tepat.
+
+* Validasi input dan izin dilakukan di server.
+
+* Endpoint yang mengubah data bisnis penting wajib mendukung idempotensi.
+
+* Transaksi yang mengubah stok dan status pembayaran harus menggunakan operasi database atomik.
+
+* Gunakan pagination untuk daftar besar.
+
+* Terapkan filter cabang dan rentang waktu di server, bukan hanya pada UI.
+
+* Hindari mengirim field sensitif yang tidak diperlukan.
+
+* Jangan mengizinkan klien menentukan total transaksi final secara bebas; hitung ulang harga dan diskon di server.
+
+* Untuk error, kembalikan kode stabil seperti `VALIDATION_ERROR`, `FORBIDDEN`, `INSUFFICIENT_STOCK`, `INVALID_STATE_TRANSITION`, atau `IDEMPOTENCY_CONFLICT`.
+
+Contoh format error:
 
 ```json
 {
   "error": {
     "code": "INSUFFICIENT_STOCK",
-    "message": "Stok tidak mencukupi.",
-    "request_id": "request-id"
+    "message": "Stok tersedia tidak mencukupi.",
+    "request_id": "server-generated-request-id"
   }
 }
 ```
 
-Gunakan status HTTP yang tepat, seperti `200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `422`, dan `500`. Pesan error tidak boleh membocorkan stack trace, SQL, kredensial, atau informasi sensitif.
+`request_id` harus dihasilkan server. Jangan mengirim stack trace, secret, atau detail internal database ke browser.
 
-### 5\. Acceptance criteria final
+### 9\. Implementasi transaksi penting
 
-Setiap fitur harus mempunyai kriteria yang dapat diuji secara objektif. Tabel berikut menjadi dasar persetujuan hasil pekerjaan developer.
+Bagian ini menentukan bagaimana aturan bisnis dijalankan secara aman di database.
 
-### 5.1 Autentikasi dan otorisasi
+### 9.1 Konfirmasi pembayaran pesanan online
 
-| ID         | Kriteria penerimaan                                                                                  |
-| ---------- | ---------------------------------------------------------------------------------------------------- |
-| AC-AUTH-01 | Pengguna yang belum login tidak dapat mengakses endpoint privat.                                     |
-| AC-AUTH-02 | Admin yang mencoba mengakses endpoint pengaturan owner menerima 403 Forbidden.                       |
-| AC-AUTH-03 | Customer tidak dapat melihat pesanan atau rekam medis customer lain dengan mengganti ID di URL.      |
-| AC-AUTH-04 | Pengguna yang dinonaktifkan tidak dapat membuat sesi baru; sesi yang masih aktif dapat dicabut.      |
-| AC-AUTH-05 | Perubahan role dan permission langsung berlaku sesuai kebijakan sesi serta tercatat dalam audit log. |
+Konfirmasi pembayaran tidak boleh hanya menjalankan `UPDATE orders SET status = 'PAID'`. Sistem harus menggabungkan validasi, konfirmasi, alokasi stok, dan pencatatan audit dalam satu transaksi.
 
-### 5.2 POS dan inventori
+Rancangan operasi database:
 
-| ID        | Kriteria penerimaan                                                                                          |
-| --------- | ------------------------------------------------------------------------------------------------------------ |
-| AC-POS-01 | Kasir dapat mencari produk, scan barcode, mengubah kuantitas, menghitung total, dan menyelesaikan transaksi. |
-| AC-POS-02 | Harga dan diskon tersimpan sebagai snapshot dan tidak berubah ketika harga master diubah kemudian.           |
-| AC-INV-01 | Penjualan, penerimaan pembelian, retur, pemakaian obat, dan transfer memperbarui stok sesuai aturan.         |
-| AC-INV-02 | Dua transaksi bersamaan tidak dapat menggunakan unit stok yang sama melebihi jumlah tersedia.                |
-| AC-INV-03 | Pengulangan request dengan idempotency key yang sama tidak menciptakan transaksi atau mutasi stok ganda.     |
-| AC-INV-04 | Riwayat mutasi menunjukkan dokumen sumber, pelaku, kuantitas, lokasi, dan waktu.                             |
-| AC-INV-05 | Sistem menolak stok negatif kecuali pengecualian diaktifkan secara eksplisit dan diotorisasi.                |
+```text
+confirm_order_payment(order_id, payment_id, request_key)
+  1. Validasi pengguna dan izin payment.confirm.
+  2. Periksa idempotency key.
+  3. Kunci pesanan dan data pembayaran.
+  4. Pastikan status pembayaran masih dapat dikonfirmasi.
+  5. Validasi jumlah pembayaran dan referensi bukti.
+  6. Kunci saldo stok produk yang dibutuhkan.
+  7. Hitung stok tersedia kembali.
+  8. Jika tidak cukup:
+       tandai STOCK_REVIEW;
+       catat alasan dan audit;
+       jangan alokasikan stok.
+  9. Jika cukup:
+       konfirmasi pembayaran;
+       buat reservasi stok;
+       ubah status pesanan menjadi PAID/PROCESSING
+       sesuai model status yang dipilih.
+ 10. Simpan audit dan hasil idempotensi.
+ 11. Commit seluruh perubahan.
+```
 
-### 5.3 Pembayaran dan e-commerce
+Developer harus memutuskan secara konsisten apakah `PAID` dan alokasi stok adalah dua status terpisah. Rekomendasi saya: pisahkan `payment_status` dari `fulfillment_status`, sehingga pembayaran yang sah tetap tercatat walaupun stok membutuhkan pemeriksaan.
 
-| ID        | Kriteria penerimaan                                                                                              |
-| --------- | ---------------------------------------------------------------------------------------------------------------- |
-| AC-PAY-01 | Owner dapat menambah, mengubah, menonaktifkan, dan mengatur cakupan cabang metode pembayaran.                    |
-| AC-PAY-02 | Customer dapat mengirim bukti pembayaran, tetapi tidak dapat menandai pembayaran sendiri sebagai lunas.          |
-| AC-PAY-03 | Hanya role yang diizinkan yang dapat mengonfirmasi pembayaran.                                                   |
-| AC-PAY-04 | Konfirmasi pembayaran tidak dapat diproses dua kali akibat request bersamaan.                                    |
-| AC-ORD-01 | Pesanan belum memperoleh reservasi final sebelum pembayaran dikonfirmasi.                                        |
-| AC-ORD-02 | Jika stok tidak mencukupi setelah pembayaran dikonfirmasi, pesanan menjadi STOCK_REVIEW dan tidak dapat dikirim. |
-| AC-ORD-03 | Pembatalan yang sah melepaskan reservasi dan mencatat mutasi yang diperlukan.                                    |
-| AC-ORD-04 | Customer dapat melihat status pesanan, metode fulfillment, dan invoice miliknya.                                 |
-| AC-ORD-05 | Pesanan yang dikirim memiliki pencatatan petugas, waktu, dan informasi pengiriman yang tersedia.                 |
+### 9.2 Penjualan POS
 
-### 5.4 Klinik dan rawat inap
+Operasi penyelesaian penjualan idealnya menggunakan satu fungsi database terkontrol yang:
 
-| ID        | Kriteria penerimaan                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------- |
-| AC-MED-01 | Dokter dapat membuat draft rekam medis untuk pasien yang berwenang ditanganinya.                                  |
-| AC-MED-02 | Rekam medis yang telah disahkan tidak dapat ditimpa secara langsung.                                              |
-| AC-MED-03 | Amendemen memiliki alasan, pelaku, waktu, dan versi sebelumnya.                                                   |
-| AC-MED-04 | Resep, penyerahan obat, mutasi stok, dan tagihan dapat ditelusuri tanpa dianggap sebagai satu kejadian yang sama. |
-| AC-HOS-01 | Pasien rawat inap mempunyai riwayat observasi dengan pencatat dan waktu.                                          |
-| AC-HOS-02 | Kandang tidak dapat dialokasikan untuk dua pasien yang saling bertabrakan dalam waktu.                            |
-| AC-HOS-03 | Customer hanya dapat melihat ringkasan dan riwayat yang telah dipublikasikan untuk hewannya.                      |
-| AC-HOS-04 | Catatan yang pernah dibagikan memiliki riwayat publikasi dan pencatat.                                            |
-| AC-HOS-05 | Proses pulang tidak dapat diselesaikan sebelum validasi discharge yang diwajibkan.                                |
+* Memvalidasi draft penjualan dan harga final.
 
-### 5.5 Keuangan, laporan, dan infrastruktur
+* Memeriksa stok serta mengunci saldo terkait.
 
-| ID        | Kriteria penerimaan                                                                                 |
-| --------- | --------------------------------------------------------------------------------------------------- |
-| AC-FIN-01 | Kasir dapat membuka dan menutup shift dengan perhitungan kas aktual serta selisih.                  |
-| AC-FIN-02 | Laporan membedakan omzet, pembayaran, pengeluaran, HPP, piutang, dan laba kotor.                    |
-| AC-FIN-03 | Perubahan transaksi setelah selesai masuk melalui proses koreksi, retur, atau refund yang tercatat. |
-| AC-SEC-01 | Pengujian akses lintas cabang tidak menemukan kebocoran data.                                       |
-| AC-SEC-02 | File privat tidak dapat diunduh tanpa otorisasi yang valid.                                         |
-| AC-OPS-01 | Backup database dan file berhasil dipulihkan pada lingkungan pengujian.                             |
-| AC-OPS-02 | Website berfungsi pada ukuran layar desktop, tablet, dan HP.                                        |
-| AC-OPS-03 | Error kritis tercatat dan dapat ditelusuri melalui request ID tanpa mencatat rahasia pengguna.      |
+* Memastikan pembayaran sesuai metode dan jumlah.
 
-Kriteria ini perlu dilengkapi dengan hasil pengujian dan bukti penerimaan dari perwakilan owner, admin, dokter, dan customer.
+* Mengurangi stok.
 
-### 6\. Rencana pengujian
+* Menambahkan pergerakan stok dan catatan kas.
 
-Pengujian harus dijalankan sejak awal pengembangan, bukan hanya menjelang peluncuran.
+* Mencatat HPP dan snapshot harga.
 
-### 01
+* Mengubah status menjadi `COMPLETED`.
 
-Unit
+* Mengembalikan nomor invoice yang unik.
 
-Unit test
+Jika satu langkah gagal, seluruh perubahan transaksional harus dibatalkan. Jangan sampai kas tercatat tetapi stok belum berkurang, atau stok berkurang dua kali akibat request berulang.
 
-Uji fungsi harga, diskon, perhitungan tagihan, validasi status, HPP, saldo stok, dan permission. Jalankan pada setiap perubahan kode yang relevan.
+### 9.3 Idempotensi
 
-### 02
+Untuk operasi seperti menyelesaikan POS, konfirmasi pembayaran, dan retur:
 
-Integrasi
+* Setiap request menerima `idempotency_key` unik dalam cakupan pengguna/operasi yang sesuai.
 
-Integration test
+* Key disimpan bersama jenis operasi, identitas sumber, dan hasil.
 
-Uji hubungan antara POS dan stok, resep dan pemakaian obat, invoice dan pembayaran, serta pesanan online dan reservasi. Gunakan database pengujian yang terisolasi.
+* Request yang sama tidak boleh membuat transaksi ganda.
 
-### 03
+* Penggunaan key yang sama dengan payload berbeda harus ditolak.
 
-API
+* Terapkan unique constraint di database; jangan hanya memeriksa duplikasi melalui kode frontend.
 
-API & authorization test
+### 9.4 Pembayaran dan refund manual
 
-Uji setiap role, perubahan ID, akses lintas cabang, request berulang, pembayaran ganda, dan input tidak valid.
+Tidak ada integrasi payment gateway dalam versi ini. Sistem hanya mencatat pembayaran dan proses pemeriksaannya.
 
-### 04
+* Pemilik mengelola metode pembayaran, nama rekening, nomor rekening, nama penerima, petunjuk pembayaran, dan status aktif.
 
-E2E
+* Informasi pembayaran yang ditampilkan ke pelanggan adalah snapshot pada saat pesanan dibuat.
 
-End-to-end test
+* Bukti transfer adalah klaim pembayaran, bukan bukti final bahwa uang telah diterima.
 
-Simulasikan alur nyata dari login, pendaftaran hewan, transaksi POS, pembayaran, resep, rawat inap, checkout, hingga laporan.
+* Konfirmasi harus mencatat pengguna, waktu, jumlah, metode, dan referensi transaksi.
 
-### 05
+* Refund memerlukan alasan, nominal, persetujuan sesuai izin, serta bukti bahwa pengembalian dana dilakukan secara manual.
 
-UAT
+* Jika pembayaran lebih besar dari tagihan, sistem tidak boleh mengasumsikan selisih otomatis sebagai tip atau saldo pelanggan; aturan kelebihan pembayaran harus ditentukan.
 
-User Acceptance Testing
+### 10\. Keuangan, HPP, dan laporan
 
-Owner, dokter, admin, dan customer perwakilan memverifikasi skenario operasional menggunakan data simulasi yang realistis.
+### 10.1 Ruang lingkup keuangan
 
-### 6.1 Skenario uji wajib
+Sistem keuangan versi pertama menyediakan:
 
-Skenario A — Konflik stok
+* Saldo kas per cabang dan shift.
 
-* Saldo awal 5 unit.
+* Penerimaan kas dari transaksi.
+
+* Pengeluaran operasional.
+
+* Piutang pelanggan.
+
+* Tagihan supplier.
+
+* Pembelian persediaan.
+
+* HPP dari penjualan.
+
+* Ringkasan pendapatan dan laba rugi sederhana.
+
+* Rekonsiliasi kas dan transaksi.
+
+* Penutupan periode dan ekspor laporan.
+
+### 10.2 Definisi laporan
+
+| Laporan             | Definisi                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| Penjualan           | Nilai transaksi penjualan berdasarkan tanggal dan status final               |
+| Penerimaan kas      | Uang yang benar-benar tercatat diterima                                      |
+| Pengeluaran         | Biaya operasional yang disetujui                                             |
+| Piutang             | Tagihan yang belum dibayar penuh                                             |
+| Nilai persediaan    | Kuantitas stok dikalikan biaya persediaan sesuai metode HPP                  |
+| HPP                 | Biaya barang yang terjual berdasarkan metode biaya yang dipilih              |
+| Laba kotor          | Pendapatan penjualan dikurangi HPP                                           |
+| Laba/rugi sederhana | Laba kotor dikurangi beban operasional, dengan komponen lain yang ditetapkan |
+| Arus kas sederhana  | Kas masuk dikurangi kas keluar pada periode yang dipilih                     |
+
+Catatan: laporan laba rugi tidak sama dengan arus kas. Pembelian stok adalah arus kas keluar ketika dibayar, tetapi tidak otomatis menjadi beban HPP seluruhnya pada hari pembelian.
+
+### 10.3 Rekonsiliasi dan penutupan
+
+* Shift kasir mempunyai saldo awal, penerimaan, pengeluaran yang diizinkan, hasil hitung fisik, selisih, dan pengguna penutup.
+
+* Selisih kas wajib memiliki alasan.
+
+* Transaksi periode yang sudah ditutup tidak boleh diedit langsung.
+
+* Koreksi dilakukan dengan transaksi pembalik atau penyesuaian berotorisasi.
+
+* Laporan dapat difilter menurut cabang, metode pembayaran, produk, pengguna, dan rentang tanggal.
+
+* Laporan keuangan lintas cabang hanya dapat dilihat oleh peran yang memiliki izin tersebut.
+
+### 11\. Deployment Vercel dan Supabase
+
+### 11.1 Struktur environment
+
+Sediakan tiga lingkungan logis:
+
+| Lingkungan      | Tujuan                 | Database                                            |
+| --------------- | ---------------------- | --------------------------------------------------- |
+| Development     | Pengembangan lokal     | Proyek Supabase development                         |
+| Preview/Staging | Uji fitur dan UAT      | Proyek Supabase staging terpisah, bila memungkinkan |
+| Production      | Operasional sebenarnya | Proyek Supabase production                          |
+
+Untuk mengurangi risiko, jangan menghubungkan semua Preview Deployment ke database produksi. Data staging sebaiknya sintetis atau sudah dianonimkan.
+
+### 11.2 Variabel lingkungan
+
+Contoh variabel frontend/server:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+```
+
+Nama variabel mengikuti model key yang digunakan proyek Supabase. Jika proyek masih menggunakan format key lama, sesuaikan dengan dokumentasi proyek tersebut.
+
+Aturan wajib:
+
+* `NEXT_PUBLIC_*` akan terekspos ke browser. Jangan pernah menyimpan secret di variabel dengan prefix ini.
+
+* `SUPABASE_SECRET_KEY` hanya digunakan di kode server yang terisolasi dan tidak pernah diimpor ke modul client.
+
+* RLS tetap harus aktif meskipun aplikasi menggunakan server-side API.
+
+* Jangan menaruh secret dalam source code, commit GitHub, screenshot, log, atau dokumen publik.
+
+* Gunakan environment variables terpisah untuk Development, Preview, dan Production.
+
+* Setelah mengganti key, cabut atau rotasi key lama jika ada kemungkinan telah terekspos.
+
+### 11.3 Langkah deployment pertama
+
+* Buat repository GitHub privat. Simpan source code, migration database, konfigurasi lint/test, dan dokumentasi deployment.
+
+* Buat proyek Supabase. Pilih region berdasarkan latensi, ketersediaan fitur, kebutuhan regulasi, dan rencana pemulihan. Jangan menganggap lokasi tertentu otomatis memenuhi seluruh persyaratan kepatuhan.
+
+* Siapkan database. Buat migration untuk tabel, foreign key, indeks, constraint, fungsi transaksi, grants, dan RLS.
+
+* Konfigurasikan Storage. Buat bucket privat untuk bukti pembayaran dan berkas medis. Tentukan batas ukuran dan jenis berkas.
+
+* Buat aplikasi Next.js. Implementasikan autentikasi, route protection, validasi server, dan pengujian akses.
+
+* Hubungkan GitHub ke Vercel. Atur build command, environment variables, domain, dan Preview Deployment.
+
+* Jalankan tes staging. Jangan mengisi data operasional nyata sebelum seluruh tes kritis lulus.
+
+* Promosikan ke production. Jalankan migration terencana, buat akun pemilik pertama melalui proses aman, uji alur transaksi, dan aktifkan monitoring.
+
+### 11.4 Database connection dan batas runtime
+
+* Gunakan mekanisme koneksi yang direkomendasikan Supabase untuk serverless/pooled connection bila aplikasi melakukan koneksi database langsung dari server.
+
+* Jangan membuka akses PostgreSQL ke jaringan publik tanpa kontrol yang diperlukan.
+
+* Untuk query melalui Supabase Data API, gunakan klien yang sesuai dengan sesi pengguna atau jalur server tepercaya.
+
+* Hindari query berat pada request interaktif; laporan besar dapat memerlukan indeks, view/materialized view, atau proses asinkron.
+
+* Fungsi database harus mempunyai batas waktu dan menangani deadlock/konflik dengan aman.
+
+* Jangan mengandalkan proses di memori server Vercel yang harus terus hidup setelah respons dikirim.
+
+* Untuk tugas terjadwal atau proses panjang, gunakan scheduler dan mekanisme background job yang cocok dengan batas layanan dan kebutuhan pekerjaan.
+
+### 11.5 Backup, pemulihan, dan ketersediaan
+
+Tetapkan target operasional awal:
+
+* RPO: kehilangan data maksimal 15 menit sebagai target.
+
+* RTO: layanan dipulihkan dalam maksimal 4 jam sebagai target.
+
+Target ini bukan jaminan otomatis dari Vercel atau Supabase. Pencapaiannya bergantung pada paket layanan, konfigurasi backup/PITR, prosedur pemulihan, personel, dan pengujian.
+
+Wajib ada:
+
+* Backup database sesuai kemampuan paket dan konfigurasi yang dipilih.
+
+* Salinan atau strategi pemulihan untuk file Storage, tidak hanya database.
+
+* Salinan backup terpisah dari lingkungan utama.
+
+* Uji restore berkala, setidaknya bulanan untuk proses awal.
+
+* Dokumentasi pemulihan dan penanggung jawab.
+
+* Pemantauan kegagalan deployment, error server, penggunaan database, kapasitas storage, dan kegagalan tugas terjadwal.
+
+### 11.6 Domain dan HTTPS
+
+* Gunakan domain milik bisnis jika tersedia.
+
+* Aktifkan HTTPS dan pastikan domain production sudah tervalidasi.
+
+* Atur redirect URL Supabase Auth secara tepat untuk setiap lingkungan.
+
+* Batasi daftar URL callback ke domain yang diizinkan.
+
+* Tetapkan URL aplikasi production secara eksplisit agar tautan reset password dan email autentikasi tidak mengarah ke Preview Deployment.
+
+### 12\. Struktur repository yang disarankan
+
+Gunakan struktur modular agar fitur klinik, toko, dan keuangan dapat dikembangkan terpisah tanpa memecah aplikasi menjadi banyak layanan.
+
+```text
+petshop-clinic/
+├── src/
+│   ├── app/
+│   │   ├── (public)/
+│   │   ├── (auth)/
+│   │   ├── (owner)/
+│   │   ├── (admin)/
+│   │   ├── (doctor)/
+│   │   ├── (customer)/
+│   │   └── api/v1/
+│   ├── components/
+│   │   ├── ui/
+│   │   ├── forms/
+│   │   └── tables/
+│   ├── modules/
+│   │   ├── auth/
+│   │   ├── branches/
+│   │   ├── customers/
+│   │   ├── pets/
+│   │   ├── inventory/
+│   │   ├── pos/
+│   │   ├── clinic/
+│   │   ├── hospitalization/
+│   │   ├── grooming/
+│   │   ├── orders/
+│   │   └── finance/
+│   ├── lib/
+│   │   ├── supabase/
+│   │   ├── auth/
+│   │   ├── validation/
+│   │   └── errors/
+│   └── types/
+├── supabase/
+│   ├── migrations/
+│   ├── seed.sql
+│   └── tests/
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── docs/
+│   ├── architecture.md
+│   ├── permissions.md
+│   ├── deployment.md
+│   └── runbook.md
+├── .github/workflows/
+├── .env.example
+├── package.json
+└── README.md
+```
+
+Ini adalah struktur referensi. Developer boleh menyesuaikannya, tetapi domain bisnis, akses database, migration, dan tes harus tetap terorganisasi.
+
+### 12.1 Aturan coding
+
+* Pisahkan komponen presentasi dari layanan transaksi.
+
+* Gunakan TypeScript strict mode.
+
+* Validasi input di server menggunakan schema.
+
+* Gunakan tipe hasil database yang dihasilkan dari skema Supabase jika sesuai dengan alur kerja tim.
+
+* Hindari query database yang tersebar tanpa pola otorisasi yang jelas.
+
+* Jangan melakukan kalkulasi total transaksi hanya di browser.
+
+* Hindari `any` pada kode transaksi dan otorisasi.
+
+* Gunakan linting, formatting, dan type-check pada CI.
+
+* Semua perubahan skema database harus melalui migration.
+
+* Setiap modul harus memiliki tes untuk aturan bisnis utamanya.
+
+### 13\. Desain UI/UX responsif
+
+### 13.1 Struktur navigasi
+
+Pemilik
+
+DashboardPOSInventoriKlinikRawat inapGroomingPesananKeuanganLaporanPengaturan
+
+Dokter
+
+JadwalPasienRekam medisResepRawat inapTugas klinis
+
+Admin
+
+POSProdukStokPembelianBookingJadwal klinikPesananPembayaran
+
+Pelanggan
+
+BerandaKatalogKeranjangPesanan sayaHewan sayaJanji temuRawat inap
+
+### 13.2 Persyaratan antarmuka
+
+* Desain mobile-first, termasuk halaman POS yang dapat digunakan di tablet.
+
+* Tabel desktop berubah menjadi daftar/kartu atau tampilan yang bisa digulir pada layar kecil.
+
+* Formulir mempunyai validasi, indikator loading, pesan error, dan konfirmasi tindakan berisiko.
+
+* Status pesanan, pembayaran, rawat inap, dan rekam medis memiliki label yang konsisten.
+
+* Tombol berisiko seperti pembatalan, refund, dan penyesuaian stok membutuhkan konfirmasi.
+
+* Gunakan pagination dan pencarian server-side untuk data besar.
+
+* Sediakan empty state, loading state, error state, dan halaman tanpa akses.
+
+* Target aksesibilitas WCAG 2.2 AA sejauh dapat diterapkan.
+
+* Jangan menampilkan informasi medis sensitif pada notifikasi yang muncul di layar kunci tanpa pertimbangan privasi.
+
+### 13.3 Persyaratan POS
+
+* Pencarian produk berdasarkan nama, SKU, atau barcode.
+
+* Pengubahan jumlah item dengan validasi stok.
+
+* Perhitungan subtotal, diskon, dan total di server.
+
+* Pemilihan pelanggan opsional untuk transaksi walk-in, sesuai kebijakan bisnis.
+
+* Pemilihan metode pembayaran.
+
+* Cetak atau unduh invoice yang sudah selesai.
+
+* Penanganan jaringan putus atau respons timeout tanpa transaksi ganda.
+
+* Pembukaan dan penutupan shift kasir.
+
+* Retur parsial dan penuh melalui prosedur yang terotorisasi.
+
+### 14\. Rencana pengujian dan kriteria penerimaan
+
+Fitur tidak dianggap selesai hanya karena halaman dapat dibuka. Kriteria berikut harus lulus sebelum rilis.
+
+### 14.1 Matriks acceptance test
+
+| Kode  | Pengujian           | Kriteria lulus                                                               |
+| ----- | ------------------- | ---------------------------------------------------------------------------- |
+| AC-01 | Login dan RBAC      | Pengguna hanya melihat dan menjalankan fungsi yang diizinkan                 |
+| AC-02 | Isolasi cabang      | Pengguna tidak dapat membaca atau mengubah data cabang tanpa izin            |
+| AC-03 | Isolasi pelanggan   | Pelanggan A tidak dapat melihat data pelanggan B dengan mengubah ID atau URL |
+| AC-04 | POS                 | Total dan stok benar; request berulang tidak membuat transaksi ganda         |
+| AC-05 | Konflik stok        | Dua transaksi bersamaan tidak dapat mengonsumsi stok melebihi ketersediaan   |
+| AC-06 | Pembayaran          | Bukti pembayaran tidak otomatis dianggap lunas                               |
+| AC-07 | Stok pesanan online | Stok dialokasikan setelah pembayaran dikonfirmasi dan diperiksa ulang        |
+| AC-08 | STOCK_REVIEW        | Pesanan yang kekurangan stok tidak dapat diproses untuk pemenuhan            |
+| AC-09 | Rekam medis         | Rekam medis bertanda tangan tidak bisa ditimpa langsung                      |
+| AC-10 | Rawat inap          | Alokasi unit tidak melampaui kapasitas yang dikonfigurasi                    |
+| AC-11 | Update pelanggan    | Pelanggan hanya melihat update yang dipublikasikan untuk hewannya            |
+| AC-12 | Keuangan            | Kas, pengeluaran, piutang, dan HPP tidak tercampur                           |
+| AC-13 | Audit               | Perubahan kritis memiliki pelaku, waktu, objek, dan alasan jika diwajibkan   |
+| AC-14 | Storage             | Dokumen privat tidak dapat diakses tanpa izin                                |
+| AC-15 | Responsif           | Alur kritis dapat digunakan pada HP, tablet, dan desktop                     |
+| AC-16 | Pemulihan           | Backup dapat dipulihkan dan aplikasi dapat kembali beroperasi                |
+| AC-17 | Deployment          | Build, tes, migration, dan rilis berjalan melalui proses yang terdokumentasi |
+
+### 14.2 Skenario tes yang wajib ada
+
+Konflik stok
+
+* Stok tersedia 5 unit.
 
 * POS mencoba menjual 4 unit.
 
-* Pada waktu hampir bersamaan, pesanan online yang pembayarannya dikonfirmasi mencoba mengalokasikan 3 unit.
+* Pesanan online mencoba mengalokasikan 3 unit secara bersamaan.
 
-* Hasil yang benar: total alokasi tidak boleh melebihi 5 unit. Salah satu operasi dapat berhasil terlebih dahulu, sedangkan operasi lainnya ditolak atau masuk proses peninjauan stok.
+* Hasil yang benar: tidak boleh keduanya berhasil mengalokasikan total 7 unit. Salah satu transaksi harus ditolak atau ditinjau ulang.
 
-Skenario B — Pembayaran ganda
+Konfirmasi pembayaran ganda
 
-* Dua request konfirmasi dikirim untuk pembayaran yang sama.
+* Admin mengonfirmasi pembayaran.
 
-* Hasil yang benar: hanya satu konfirmasi yang mengubah status dan hanya satu alokasi stok yang dilakukan.
+* Request yang sama dikirim ulang karena timeout.
 
-Skenario C — Stok habis setelah pembayaran
+* Hasil yang benar: tidak ada pembayaran, reservasi, atau pergerakan stok ganda.
 
-* Customer membayar pesanan.
+Akses rekam medis
 
-* Pada saat konfirmasi, stok tidak lagi mencukupi.
+* Admin mencoba menandatangani diagnosis.
 
-* Hasil yang benar: status menjadi `STOCK_REVIEW`, pesanan tidak dapat dikirim, dan sistem menyediakan tindakan penyelesaian yang tercatat.
+* Dokter yang tidak ditugaskan mencoba mengubah rekam medis tanpa izin tambahan.
 
-Skenario D — Perlindungan rekam medis
+* Hasil yang benar: permintaan ditolak oleh server/database.
 
-* Dokter A mengesahkan catatan.
+Isolasi pelanggan
 
-* Admin mencoba mengubah diagnosis.
+* Pelanggan mengganti ID hewan atau ID pesanan di URL dan payload.
 
-* Dokter yang tidak memiliki penugasan atau izin mencoba melakukan amendemen.
+* Hasil yang benar: akses ditolak tanpa membocorkan data milik pelanggan lain.
 
-* Hasil yang benar: tindakan tanpa kewenangan ditolak, sedangkan amendemen yang sah mempertahankan catatan lama.
+Refund dan pembatalan
 
-Skenario E — Isolasi data customer
+* Pembayaran sudah dikonfirmasi.
 
-* Customer A mencoba membaca invoice, rekam medis, dan status rawat inap milik Customer B.
+* Admin mencoba membatalkan pesanan tanpa menyelesaikan prosedur refund yang diperlukan.
 
-* Hasil yang benar: akses ditolak tanpa membocorkan apakah dokumen tersebut ada.
+* Hasil yang benar: transisi status diblokir atau diarahkan ke workflow refund yang sah.
 
-Skenario F — Pembatalan dan refund
+Backup dan restore
 
-* Pesanan dibayar, stok dialokasikan, kemudian pesanan dibatalkan secara sah.
+* Pulihkan backup ke lingkungan uji yang terpisah.
 
-* Hasil yang benar: sistem mencatat pembatalan, melepaskan atau mengembalikan stok sesuai kondisi fisik, dan menjalankan refund melalui proses yang dapat diaudit.
+* Verifikasi tabel, jumlah data, akses, berkas, dan fungsi kritis.
 
-Skenario G — Pemulihan backup
+* Catat durasi pemulihan serta kekurangan yang ditemukan.
 
-* Pulihkan database dan file ke lingkungan staging.
+### 14.3 Gerbang kualitas
 
-* Periksa keterkaitan invoice, pembayaran, stok, rekam medis, dan lampiran.
+Rilis production hanya boleh dilakukan bila:
 
-* Hasil yang benar: seluruh data penting konsisten dan aplikasi dapat digunakan kembali.
+* Seluruh acceptance test kritis lulus.
 
-### 6.2 Target pengujian
+* Tidak ada kerentanan kritis/tinggi yang belum ditangani.
 
-Target awal yang disarankan:
+* Tes RLS mencakup setiap jenis peran dan isolasi pelanggan.
 
-* Unit test untuk aturan bisnis kritis, dengan sasaran cakupan tinggi pada modul pembayaran, stok, dan otorisasi.
+* Migrasi database sudah diuji pada staging.
 
-* Seluruh acceptance criteria kritis harus lulus.
+* Prosedur backup/restore sudah diuji.
 
-* Tidak ada kerentanan kritis atau tinggi yang belum ditangani saat peluncuran.
+* Pemilik menyetujui hasil UAT untuk alur POS, klinik, rawat inap, dan laporan.
 
-* Uji beban berdasarkan perkiraan pengguna serentak dan transaksi puncak yang ditetapkan owner.
+### 15\. Roadmap implementasi
 
-* Uji backup dan restore secara nyata, bukan sekadar memastikan file backup dibuat.
+Bangun sistem secara bertahap, dengan setiap tahap menghasilkan fungsi yang dapat diuji. Jangan mengaktifkan seluruh modul sekaligus tanpa validasi.
 
-* Uji lintas browser dan ukuran layar yang relevan.
+### 01
 
-Persentase code coverage bukan satu-satunya ukuran kualitas. Pengujian harus memprioritaskan kegagalan yang dapat menyebabkan kehilangan uang, ketidaksesuaian stok, kebocoran data, atau kesalahan rekam medis.
+Fondasi aplikasi dan keamanan
 
-### 7\. Deployment cloud/VPS dan operasional produksi
+Repository, CI, environment, autentikasi, cabang, RBAC, RLS, audit log, migration.
 
-### 7.1 Struktur environment
+Gerbang: tes akses lulus
 
-Pisahkan lingkungan berikut:
+### 02
 
-| Environment | Tujuan                    | Data                     |
-| ----------- | ------------------------- | ------------------------ |
-| Development | Pengembangan fitur        | Data dummy               |
-| Staging     | UAT dan simulasi produksi | Data uji yang disamarkan |
-| Production  | Operasional bisnis        | Data aktual              |
+Master data dan inventori
 
-Jangan menggunakan database produksi untuk eksperimen atau pengujian developer.
+Pelanggan, hewan, produk, supplier, lokasi stok, penerimaan, mutasi, transfer, stock opname.
 
-### 7.2 Rancangan deployment
+Gerbang: saldo stok konsisten
 
-Pengguna melalui HTTPS
+### 03
 
-Nginx / Reverse Proxy
+POS dan pembayaran
 
-TLS • Routing • Rate limiting
+Shift kasir, invoice, metode pembayaran, transaksi atomik, retur, refund, audit.
 
-Next.js
+Gerbang: tidak ada transaksi ganda
 
-Frontend
+### 04
 
-Laravel
+Klinik dan rawat inap
 
-Backend API
+Jadwal, kunjungan, rekam medis, resep, penggunaan obat, unit rawat, observasi, update pelanggan.
 
-PostgreSQL
+Gerbang: izin medis lulus
 
-Storage & Redis
+### 05
 
-Background worker memproses antrean, pengingat, dan tugas yang tidak harus berjalan dalam request pengguna.
+Grooming, penitipan, dan e-commerce
 
-### 7.3 Standar operasional
+Booking, kapasitas, katalog, keranjang, pesanan, unggah bukti pembayaran, alokasi stok, pickup/delivery.
 
-* Domain dengan HTTPS dan sertifikat yang diperbarui otomatis.
+Gerbang: alur pesanan lulus
 
-* Database tidak terbuka langsung ke internet publik.
+### 06
 
-* Kredensial disimpan pada secret manager atau konfigurasi environment yang aman.
+Keuangan, laporan, dan peluncuran
 
-* Backup database dan file terjadwal dengan salinan di lokasi terpisah.
+Kas, biaya operasional, piutang, HPP, laba rugi, rekonsiliasi, backup/restore, UAT, pelatihan.
 
-* Monitoring penggunaan CPU, RAM, disk, database, antrean, dan error aplikasi.
+Gerbang: persetujuan pemilik
 
-* Log aplikasi tanpa password, token, atau informasi sensitif yang tidak diperlukan.
+Durasi tiap tahap harus ditetapkan setelah jumlah developer, kompleksitas migrasi data, kebutuhan cabang, dan kondisi data awal diketahui. Jadwal yang terlalu pasti sebelum hal tersebut dinilai berisiko.
 
-* Proses deployment menggunakan migrasi database yang ditinjau dan rencana rollback.
+### 16\. Data awal dan proses go-live
 
-* Worker antrean, scheduler, dan tugas backup diawasi agar kegagalannya terdeteksi.
+Sebelum digunakan, siapkan:
 
-* Pembaruan dependensi dan patch keamanan dilakukan berkala.
+* Profil bisnis dan cabang.
 
-* Sediakan prosedur ketika VPS atau internet bermasalah, termasuk cara staf mencatat transaksi sementara dan merekonsiliasinya setelah sistem pulih.
+* Pengguna, peran, serta izin.
 
-### 7.4 Target pemulihan
+* Daftar produk, SKU/barcode, satuan, harga jual, dan HPP awal.
 
-Tetapkan target awal berikut sebagai usulan operasional:
+* Saldo stok awal per lokasi dan batch bila digunakan.
 
-| Parameter       | Target awal                                                                        |
-| --------------- | ---------------------------------------------------------------------------------- |
-| RPO             | Maksimal kehilangan data 15 menit                                                  |
-| RTO             | Layanan kritis pulih dalam 4 jam                                                   |
-| Backup database | Berkala, dengan target interval maksimal 15 menit untuk backup/log yang diperlukan |
-| Backup file     | Harian dan setelah perubahan penting sesuai kebutuhan                              |
-| Uji restore     | Minimal bulanan dan sebelum perubahan infrastruktur besar                          |
-| Monitoring      | Notifikasi untuk error kritis, disk hampir penuh, dan kegagalan backup             |
+* Daftar supplier.
 
-Target tersebut bukan jaminan otomatis. RPO 15 menit memerlukan strategi backup dan pemulihan point-in-time yang sesuai, sedangkan RTO 4 jam memerlukan prosedur, infrastruktur, dan personel yang siap menjalankannya.
+* Pelanggan dan hewan yang datanya boleh dimigrasikan.
 
-### 7.5 Strategi saat internet terputus
+* Katalog layanan klinik, grooming, dan penitipan.
 
-Versi awal sebaiknya menggunakan model online-first dengan transaksi yang diproses server. POS tidak boleh mengklaim transaksi offline berhasil jika belum ada mekanisme sinkronisasi yang teruji.
+* Daftar unit/kandang rawat inap.
 
-Jika operasi tanpa internet menjadi kebutuhan penting, implementasikan mode offline secara khusus pada tahap lanjutan, dengan:
+* Metode pembayaran manual dan instruksi pembayaran.
 
-* Penyimpanan transaksi lokal yang aman.
+* Saldo kas awal, piutang, dan tagihan supplier yang masih berlaku.
 
-* ID transaksi unik dan idempotensi.
+* Template invoice, resep, ringkasan rawat inap, dan bukti transaksi.
 
-* Sinkronisasi saat koneksi kembali.
+### Checklist rilis
 
-* Penanganan konflik stok dan harga.
+### Daftar pemeriksaan go-live
 
-* Rekonsiliasi pembayaran dan audit transaksi offline.
+0 dari 10 selesai
 
-### 8\. Struktur pekerjaan developer
+ Salin
 
-Agar pengerjaan dapat dipantau, backlog awal dapat dibagi menjadi kelompok berikut.
+Akun dan keamanan
 
-| Epic    | Deliverable utama                         |
-| ------- | ----------------------------------------- |
-| EPIC-01 | Auth, role, permission, cabang, audit     |
-| EPIC-02 | Customer, hewan, profil dan kepemilikan   |
-| EPIC-03 | Master produk, harga, supplier, inventori |
-| EPIC-04 | POS, shift, pembayaran, retur             |
-| EPIC-05 | Appointment, rekam medis, resep, tindakan |
-| EPIC-06 | Rawat inap, observasi, tugas perawatan    |
-| EPIC-07 | Grooming, penitipan, kapasitas            |
-| EPIC-08 | Invoice, kas, pengeluaran, laporan        |
-| EPIC-09 | E-commerce, reservasi stok, fulfillment   |
-| EPIC-10 | Portal customer dan informasi rawat inap  |
-| EPIC-11 | Keamanan, pengujian, backup, deployment   |
+Pemilik pertama, RBAC, RLS, isolasi cabang dan pelanggan diuji.
 
-Setiap tiket pekerjaan harus memiliki:
+Data awal
 
-* Tujuan dan deskripsi.
+Produk, harga, stok, pelanggan, layanan, dan saldo awal telah direkonsiliasi.
 
-* Permission yang diperlukan.
+POS
 
-* Perubahan database/API.
+Penjualan, pembayaran, invoice, shift, retur, dan transaksi ganda diuji.
 
-* Business rules yang terkait.
+Klinik
 
-* Acceptance criteria.
+Penugasan dokter, rekam medis bertanda tangan, resep, dan amendemen diuji.
 
-* Unit test atau integration test yang diwajibkan.
+Rawat inap
 
-* Status review dan persetujuan.
+Alokasi unit, observasi, update publik, dan proses pulang diuji.
 
-Definition of Done untuk sebuah fitur berarti kode selesai, migrasi tersedia, pengujian lulus, hak akses diperiksa, dokumentasi diperbarui, dan fitur telah diuji di staging.
+Pesanan online
 
-### 9\. Checklist sebelum go-live
+Pembayaran manual, STOCK_REVIEW, pickup, dan delivery diuji.
 
-### Checklist peluncuran
+Keuangan
 
-0/12
+Kas, biaya, piutang, HPP, dan laporan diverifikasi.
 
-Seluruh role dan permission sudah diuji.
+Pemulihan
 
-POS, pembayaran manual, dan penutupan shift lulus UAT.
+Backup database dan berkas berhasil dipulihkan di lingkungan uji.
 
-Stok bersama konsisten antara POS, klinik, dan e-commerce.
+Produksi
 
-Rekam medis yang disahkan tidak bisa ditimpa langsung.
+Domain, HTTPS, environment, monitoring, dan prosedur insiden siap.
 
-Alur rawat inap dan publikasi informasi customer telah diuji.
+Operasional
 
-Grooming, penitipan, dan kapasitas booking telah diuji.
+Pelatihan pengguna, SOP, kontak penanggung jawab, dan persetujuan UAT selesai.
 
-Retur, refund, piutang, dan laporan keuangan telah diverifikasi.
+### 17\. Kriteria selesai untuk developer
 
-Backup dan pemulihan database serta file berhasil diuji.
+Pekerjaan dianggap selesai bila:
 
-Domain, HTTPS, monitoring, dan alert produksi aktif.
+* Semua modul dalam ruang lingkup telah diimplementasikan sesuai prioritas dan disetujui pemilik.
 
-Data awal produk, harga, stok, pelanggan, dan akun telah diverifikasi.
+* Database schema, migration, constraint, RLS, dan fungsi transaksi tersedia di repository.
 
-Owner, dokter, dan admin sudah mendapatkan pelatihan.
+* Seluruh alur penting berjalan di staging dan lulus tes.
 
-Prosedur gangguan internet dan pemulihan layanan sudah tersedia.
+* Hak akses setiap peran diverifikasi di server dan database.
 
-Salin checklist
+* Stok, pembayaran, dan kas tidak mengalami ketidakkonsistenan pada tes konkurensi.
 
-### 10\. Kesimpulan dan keputusan implementasi
+* Data medis yang telah ditandatangani terlindungi dari perubahan langsung.
 
-Dokumen ini menetapkan fondasi implementasi dengan fokus pada tiga risiko terbesar bisnis Anda:
+* Laporan dapat direkonsiliasi dengan transaksi sumber.
 
-* Stok dan transaksi: stok bersama harus konsisten saat POS, klinik, dan pesanan online beroperasi bersamaan.
+* Deployment production, backup, pemulihan, monitoring, dan prosedur insiden terdokumentasi.
 
-* Keamanan dan rekam medis: izin diperiksa di backend, catatan medis yang disahkan dilindungi, dan informasi rawat inap yang dibagikan customer dapat diaudit.
+* Pemilik menyetujui UAT dan proses serah terima.
 
-* Keuangan: pembayaran manual, konfirmasi, retur, refund, kas, dan laporan harus saling terhubung tanpa menyamakan omzet dengan kas masuk.
+* Tidak ada secret yang tersimpan di source code atau terpapar ke browser.
 
-Urutan implementasi yang direkomendasikan adalah menyelesaikan fondasi data dan permission, lalu inventori serta POS, kemudian klinik dan rawat inap, setelah itu e-commerce dan portal customer, dan terakhir penyempurnaan laporan serta pengujian produksi.
 
-Status dokumen: siap dijadikan acuan teknis untuk memulai desain UI, migration database, implementasi API, dan backlog sprint. Dokumen ini belum berarti aplikasi telah dibangun atau diuji; developer tetap perlu memvalidasi detail skema, mengimplementasikan aturan bisnis, dan memenuhi seluruh acceptance criteria sebelum sistem digunakan dalam operasional nyata.
+Untuk menjaga kualitas, fondasi database dan otorisasi harus diselesaikan serta diuji sebelum data operasional sebenarnya dimasukkan.
